@@ -98,15 +98,16 @@ The backend will be available at `http://localhost:8000`
 npm create vite@latest frontend -- --template react
 cd frontend
 ```
+2. Use this if you have any problem with 'npm create':
+```bash
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
 
-2. Install dependencies:
+3. Install dependencies:
 ```bash
 npm install
 npm install lucide-react
 ```
-
-3. Replace the contents of `src/App.jsx` with the React component code provided
 
 4. Start the development server:
 ```bash
@@ -162,31 +163,6 @@ Once the backend is running, visit `http://localhost:8000/docs` for interactive 
 - Click the "Leave Room" button
 - You'll be disconnected from the room's WebSocket connection
 
-## Configuration
-
-### Backend Configuration
-
-Edit `backend/app/core/config.py` to customize settings:
-
-```python
-class Settings(BaseSettings):
-    app_name: str = "Distributed Chat App"
-    secret_key: str = "your-secret-key-change-in-production"
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-```
-
-**Important:** Change the `secret_key` in production!
-
-### Frontend Configuration
-
-Update API URLs in `frontend/src/App.jsx`:
-
-```javascript
-const API_URL = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000';
-```
-
 ## Data Storage
 
 Currently, the application uses **in-memory storage** for:
@@ -196,12 +172,6 @@ Currently, the application uses **in-memory storage** for:
 
 **Note:** All data will be lost when the server restarts.
 
-### Upgrading to Persistent Storage
-
-For production use, consider adding:
-- **PostgreSQL** or **MongoDB** for user and room data
-- **Redis** for session management and caching
-- **Message Queue** (RabbitMQ, Kafka) for distributed WebSocket connections
 
 ## Security Considerations
 
@@ -213,34 +183,6 @@ For production use, consider adding:
 - ⚠️ Implement rate limiting for API endpoints
 - ⚠️ Add input validation and sanitization
 
-## Deployment
-
-### Backend Deployment (Example with Docker)
-
-Create a `Dockerfile`:
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY app ./app
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### Frontend Deployment
-
-Build the production version:
-
-```bash
-npm run build
-```
-
-Deploy the `dist/` folder to any static hosting service (Vercel, Netlify, AWS S3, etc.)
 
 ## Troubleshooting
 
@@ -272,24 +214,8 @@ Deploy the `dist/` folder to any static hosting service (Vercel, Netlify, AWS S3
 - [ ] Admin panel
 - [ ] Mobile app (React Native)
 
-## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
 
 ## License
 
 This project is open source and available under the [MIT License](LICENSE).
-
-## Support
-
-If you encounter any issues or have questions, please open an issue on GitHub.
-
----
-
-Built with ❤️ using FastAPI and React
