@@ -2,7 +2,7 @@
 
 Your chat application is now a **truly distributed system** with MongoDB and Redis!
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
@@ -31,7 +31,7 @@ Your chat application is now a **truly distributed system** with MongoDB and Red
 └─────────────┘            └─────────────┘
 ```
 
-## 📦 New Components
+## New Components
 
 ### MongoDB
 - **Purpose**: Persistent storage for users, rooms, and messages
@@ -47,7 +47,7 @@ Your chat application is now a **truly distributed system** with MongoDB and Red
   - Enables real-time communication between servers
   - Acts as message broker for distributed architecture
 
-## 🚀 Installation Steps
+## Installation Steps
 
 **Install MongoDB:**
 
@@ -121,86 +121,30 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8002
 ```
 
-## 🧪 Testing the Distributed Setup
+## New Features
 
-### Test 1: Single Backend Instance
-
-```bash
-# Start backend
-cd backend
-python -m uvicorn app.main:app --reload --port 8000
-
-# Start frontend
-cd frontend
-npm run dev
-
-# Open http://localhost:5173
-# Create users, rooms, chat normally
-```
-
-### Test 2: Multiple Backend Instances
-
-**Terminal 1:**
-```bash
-cd backend
-python -m uvicorn app.main:app --reload --port 8001
-```
-
-**Terminal 2:**
-```bash
-cd backend
-python -m uvicorn app.main:app --reload --port 8002
-```
-
-**Update frontend to use instance 1:**
-```javascript
-// frontend/src/App.jsx
-const API_URL = 'http://localhost:8001';
-const WS_URL = 'ws://localhost:8001';
-```
-
-**Browser Window 1:**
-- Open http://localhost:5173
-- Register as "Alice"
-- Create room "Test Room"
-
-**Update frontend to use instance 2:**
-```javascript
-const API_URL = 'http://localhost:8002';
-const WS_URL = 'ws://localhost:8002';
-```
-
-**Browser Window 2:**
-- Open http://localhost:5173 (incognito)
-- Register as "Bob"
-- Join "Test Room"
-
-**Result:** Alice and Bob can chat in real-time even though they're connected to different backend servers! Messages sync via Redis pub/sub.
-
-## 📊 New Features
-
-### ✅ Message Persistence
+### Message Persistence
 - Messages are now stored in MongoDB
 - When you join a room, you see the last 50 messages
 - Message history survives server restarts
 
-### ✅ Data Persistence
+### Data Persistence
 - Users persist across restarts
 - Rooms persist across restarts
 - No more data loss!
 
-### ✅ Horizontal Scaling
+### Horizontal Scaling
 - Run multiple backend instances
 - Load balance across instances
 - Each instance handles different users
 - All instances stay in sync via Redis
 
-### ✅ Better Architecture
+### Better Architecture
 - **Repository Pattern**: Clean data access layer
 - **Service Layer**: Business logic separated
 - **Clear Separation**: Database, API, WebSocket, Services
 
-## 📁 New Project Structure
+## New Project Structure
 
 ```
 backend/
@@ -226,23 +170,7 @@ backend/
 ├── Dockerfile
 └── requirements.txt
 ```
-
-## 🔧 Configuration
-
-### Environment Variables (.env)
-
-```bash
-# Security
-SECRET_KEY=generate-with-openssl-rand-hex-32
-
-# MongoDB
-MONGODB_URL=mongodb://localhost:27017
-MONGODB_DB_NAME=chat_app
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-```
+## Configuration
 
 ### MongoDB Collections
 
@@ -257,7 +185,7 @@ Format: `chat:room:{room_id}`
 - Each room has its own pub/sub channel
 - Messages published to channel reach all backend instances
 
-## 🎯 How It Works
+## How It Works
 
 ### Message Flow
 
@@ -275,7 +203,7 @@ Format: `chat:room:{room_id}`
 3. **Backend** sends message history from MongoDB
 4. **User** sees recent messages and can start chatting
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### MongoDB Connection Error
 ```bash

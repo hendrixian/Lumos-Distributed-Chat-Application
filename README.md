@@ -230,24 +230,6 @@ Add more instances behind a load balancer for virtually unlimited scaling.
 
 ## 🔧 Configuration
 
-### Environment Variables
-
-Create `backend/.env`:
-
-```bash
-# Security
-SECRET_KEY=your-secret-key-here-change-in-production
-
-# MongoDB
-MONGODB_URL=mongodb://localhost:27017
-MONGODB_DB_NAME=chat_app
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
-```
-
 ### Frontend Configuration
 
 Update `frontend/src/App.jsx`:
