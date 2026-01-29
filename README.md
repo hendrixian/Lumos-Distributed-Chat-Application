@@ -86,7 +86,7 @@ A **truly distributed**, real-time chat application with message persistence, ho
 .
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                      # FastAPI app entry
+│   │   ├── main.py                     # FastAPI app entry
 │   │   ├── core/
 │   │   │   ├── config.py               # Configuration
 │   │   │   └── database.py             # MongoDB & Redis connections
@@ -108,8 +108,8 @@ A **truly distributed**, real-time chat application with message persistence, ho
 │   ├── src/
 │   │   ├── App.jsx                    # React main component
 │   │   ├── main.jsx                   # React entry point
-│   │   ├── App.css                    # React main component
-│   │   └── index.css                  # React entry point
+│   │   ├── App.css                    
+│   │   └── index.css                  
 │   └── package.json                   # Node dependencies
 ├── README.md                          # This file
 ├── DISTRIBUTED_SETUP.md               # Detailed setup guide
