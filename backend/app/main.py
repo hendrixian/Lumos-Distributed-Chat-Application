@@ -39,12 +39,25 @@ app = FastAPI(
 )
 
 # CORS middleware - allows frontend to communicate with backend
+# In main.py - Update the CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", 
-        "http://localhost:5173", 
-        "http://127.0.0.1:5173"
+        # Backend port 
+        "http://127.0.0.1:8002",
+        "http://localhost:8002",
+        
+        # Common frontend development ports
+        "http://127.0.0.1:3000",  # React default
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",  # Vite default
+        "http://localhost:5173",
+        "http://127.0.0.1:8080",  # Vue/other default
+        "http://localhost:8080",
+        
+        # Add these if you're testing directly
+        "http://127.0.0.1:8000",  # Just in case
+        "http://localhost:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
