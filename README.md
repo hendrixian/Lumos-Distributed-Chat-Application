@@ -94,27 +94,27 @@ A **truly distributed**, real-time chat application with message persistence, ho
 │   │   │   ├── auth.py                 # Authentication endpoints
 │   │   │   └── rooms.py                # Room management endpoints
 │   │   ├── repositories/               # Data access layer
-│   │   │   ├── user_repository.py
-│   │   │   ├── room_repository.py
-│   │   │   └── message_repository.py
+│   │   │   ├── user_repo.py
+│   │   │   ├── room_repo.py
+│   │   │   └── message_repo.py
 │   │   ├── services/                  # Business logic layer
-│   │   │   └── pubsub_service.py      # Redis pub/sub
+│   │   │   └── pubsub.py              # Redis pub/sub
 │   │   ├── websocket/
 │   │   │   └── chat.py                # WebSocket handler
 │   │   └── models/
 │   │       └── schemas.py             # Pydantic models
 │   ├── .env                           # Environment template
-│   ├── Dockerfile                     # Backend container
-│   └── requirements.txt               # Python dependencies
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx                    # React main component
-│   │   └── main.jsx                   # React entry point
+│   │   ├── main.jsx                   # React entry point
+│   │   ├── App.css                    # React main component
+│   │   └── index.css                  # React entry point
 │   └── package.json                   # Node dependencies
-├── docker-compose.yml                 # Multi-container setup
 ├── README.md                          # This file
-├── DISTRIBUTED_SETUP.md              # Detailed setup guide
-└── CODE_ARCHITECTURE.md              # Code structure guide
+├── DISTRIBUTED_SETUP.md               # Detailed setup guide
+└── CODE_ARCHITECTURE.md               # Code structure guide
+└── requirements.txt                   # Python dependencies
 ```
 
 ## Quick Start
