@@ -1,6 +1,6 @@
 # Distributed Chat Application
 
-A **truly distributed**, real-time chat application with message persistence, horizontal scaling, and enterprise-grade architecture.
+A truly distributed, real-time chat application with message persistence, horizontal scaling, and enterprise-grade architecture.
 
 ![Chat Application](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white) ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 
@@ -30,35 +30,6 @@ A **truly distributed**, real-time chat application with message persistence, ho
 
 ## Architecture
 
-### System Overview
-```
-┌────────────┐     ┌────────────┐     ┌────────────┐
-│  Client A  │────▶│  Client B  │────▶│  Client C  │
-└─────┬──────┘     └─────┬──────┘     └─────┬──────┘
-      │                  │                  │
-      │            WebSocket               │
-      └──────────────┬───────────────────┘
-                     │
-              ┌──────▼──────┐
-              │   Nginx     │ (Load Balancer)
-              └──────┬──────┘
-                     │
-         ┌───────────┼───────────┐
-         │           │           │
-    ┌────▼───┐  ┌───▼────┐  ┌───▼────┐
-    │Backend1│  │Backend2│  │Backend3│  (FastAPI + WebSocket)
-    └────┬───┘  └───┬────┘  └───┬────┘
-         │          │           │
-         └──────────┼───────────┘
-                    │
-         ┌──────────┴──────────┐
-         │                     │
-    ┌────▼────┐          ┌─────▼─────┐
-    │ MongoDB │          │   Redis   │
-    │(Storage)│          │ (Pub/Sub) │
-    └─────────┘          └───────────┘
-```
-
 ### Technology Stack
 
 **Backend**
@@ -77,8 +48,6 @@ A **truly distributed**, real-time chat application with message persistence, ho
 **Infrastructure**
 - MongoDB - Document database for persistence
 - Redis - In-memory data store for pub/sub
-- Docker - Containerization
-- Nginx - Load balancing (optional)
 
 ## Project Structure
 
