@@ -4,31 +4,31 @@ A **truly distributed**, real-time chat application with message persistence, ho
 
 ![Chat Application](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white) ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 
-## 🌟 Features
+## Features
 
 ### Core Features
-- 🔐 **JWT Authentication** - Secure user registration and login
-- 💬 **Real-time Messaging** - Instant message delivery via WebSockets
-- 🏠 **Room Management** - Create, join, and manage chat rooms
-- 👥 **User Presence** - See when users join and leave rooms
-- 📱 **Responsive Design** - Beautiful UI that works everywhere
-- 📜 **Message History** - Persistent chat history in MongoDB
+- **JWT Authentication** - Secure user registration and login
+- **Real-time Messaging** - Instant message delivery via WebSockets
+- **Room Management** - Create, join, and manage chat rooms
+- **User Presence** - See when users join and leave rooms
+- **Responsive Design** - Beautiful UI that works everywhere
+- **Message History** - Persistent chat history in MongoDB
 
 ### Distributed Features
-- 🚀 **Horizontal Scaling** - Run multiple backend instances
-- 🔄 **Redis Pub/Sub** - Synchronize messages across all servers
-- 💾 **MongoDB Storage** - Persistent data that survives restarts
-- ⚖️ **Load Balancing Ready** - Distribute traffic across instances
-- 🔌 **Fault Tolerant** - Continue working even if one server fails
+- **Horizontal Scaling** - Run multiple backend instances
+- **Redis Pub/Sub** - Synchronize messages across all servers
+- **MongoDB Storage** - Persistent data that survives restarts
+- **Load Balancing Ready** - Distribute traffic across instances
+- **Fault Tolerant** - Continue working even if one server fails
 
 ### Architecture Features
-- 🏗️ **Repository Pattern** - Clean data access layer
-- 🎯 **Service Layer** - Centralized business logic
-- 📦 **Dependency Injection** - Loose coupling, high testability
-- 🧪 **Clean Code** - Well-documented, maintainable codebase
-- 🐳 **Docker Support** - Easy deployment with docker-compose
+- **Repository Pattern** - Clean data access layer
+- **Service Layer** - Centralized business logic
+- **Dependency Injection** - Loose coupling, high testability
+- **Clean Code** - Well-documented, maintainable codebase
+- **Docker Support** - Easy deployment with docker-compose
 
-## 🏗️ Architecture
+## Architecture
 
 ### System Overview
 ```
@@ -80,7 +80,7 @@ A **truly distributed**, real-time chat application with message persistence, ho
 - Docker - Containerization
 - Nginx - Load balancing (optional)
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 .
@@ -117,7 +117,7 @@ A **truly distributed**, real-time chat application with message persistence, ho
 └── CODE_ARCHITECTURE.md              # Code structure guide
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 **Install Dependencies:**
 
@@ -165,13 +165,13 @@ npm install
 npm run dev
 ```
 
-## 📖 Documentation
+## Documentation
 
 - **[DISTRIBUTED_SETUP.md](DISTRIBUTED_SETUP.md)** - Complete setup guide with architecture details
 - **[CODE_ARCHITECTURE.md](CODE_ARCHITECTURE.md)** - Code structure and design patterns
 - **API Docs**: http://localhost:8000/docs (Swagger UI)
 
-## 🧪 Testing the Distributed System
+## Testing the Distributed System
 
 ### Test Multiple Backend Instances
 
@@ -199,7 +199,7 @@ python -m uvicorn app.main:app --reload --port 8002
 
 **Result**: Alice and Bob chat in real-time across different servers! 🎉
 
-## 🎯 How It Works
+## How It Works
 
 ### Message Flow
 
@@ -257,7 +257,7 @@ const API_URL = 'http://localhost:8000';  // Your backend URL
 const WS_URL = 'ws://localhost:8000';     // Your WebSocket URL
 ```
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### MongoDB Connection Error
 ```bash
@@ -294,7 +294,7 @@ redis-cli ping
 - Verify all instances connected to same Redis
 - Check Redis pub/sub: `redis-cli MONITOR`
 
-## 🚀 Production Deployment
+## Production Deployment
 
 ### Manual Deployment
 
@@ -315,11 +315,11 @@ redis-cli ping
 - [ ] Validate all inputs
 - [ ] Use environment variables for secrets
 
-## 📝 License
+## License
 
 This project is open source and available under the [MIT License](LICENSE).
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - FastAPI for the amazing framework
 - MongoDB for reliable persistence
