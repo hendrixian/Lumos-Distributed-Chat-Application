@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, LogOut, Plus, Trash2, Users } from 'lucide-react';
 
-const API_URL = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000';
+const API_URL = 'http://localhost:8002';
+const WS_URL = 'ws://localhost:8002';
 
 export default function ChatApp() {
   const [user, setUser] = useState(null);
