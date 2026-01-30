@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, LogOut, Plus, Trash2, Users } from 'lucide-react';
 
-const API_URL = 'http://localhost:8002';
-const WS_URL = 'ws://localhost:8002';
+//const API_URL = 'http://localhost:8002'; please change this according to your port, this is not mine by thu
+//const WS_URL = 'ws://localhost:8002';please change according to your port, this is not mine by thu
+
+const API_URL = 'http://127.0.0.1:8000';//thu's port
+const WS_URL  = 'ws://127.0.0.1:8000';//thu's port
 
 export default function ChatApp() {
   const [user, setUser] = useState(null);
