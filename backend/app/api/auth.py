@@ -1,6 +1,7 @@
 """
 Authentication API endpoints
 Handles user registration, login, and JWT token management
+Uses MongoDB for user storage
 """
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -10,10 +11,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 from ..models.schemas import UserCreate, User, Token, TokenData
 from ..core.config import settings
-from ..repositories.user_repo import user_repository
+from ..core.database import mongodb
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+
+# MongoDB collections
+USERS_COLLECTION = "users"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -93,11 +97,73 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     except JWTError:
         raise credentials_exception
     
-    user = await user_repository.get_user_by_username(token_data.username)
+    # Get user from MongoDB
+    user = await get_user_by_username(token_data.username)
+    
     if user is None:
         raise credentials_exception
     
-    return User(username=user["username"])
+    return User(username=user["username"], email=user.get("email"))
+
+
+async def user_exists(username: str, email: str = None) -> bool:
+    """
+    Check if a user already exists in MongoDB
+    
+    Args:
+        username: Username to check
+        email: Email to check (optional)
+        
+    Returns:
+        True if user exists, False otherwise
+    """
+    users_collection = mongodb.get_collection("users")
+    
+    # Check if username exists
+    user_by_username = await users_collection.find_one({"username": username})
+    if user_by_username:
+        return True
+    
+    # Also check if email exists (if provided)
+    if email:
+        user_by_email = await users_collection.find_one({"email": email})
+        if user_by_email:
+            return True
+    
+    return False
+
+async def create_user(username: str, email: str, hashed_password: str):
+    """
+    Create a new user in MongoDB
+    
+    Args:
+        username: Username
+        email: Email
+        hashed_password: Hashed password
+    """
+    users_collection = mongodb.get_collection("users")
+    user_document = {
+        "username": username,
+        "email": email,
+        "hashed_password": hashed_password,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    await users_collection.insert_one(user_document)
+
+async def get_user_by_username(username: str) -> Optional[dict]:
+    """
+    Get user by username from MongoDB
+    
+    Args:
+        username: Username to find
+        
+    Returns:
+        User document or None if not found
+    """
+    users_collection = mongodb.get_collection("users")
+    user = await users_collection.find_one({"username": username})
+    return user
 
 
 @router.post("/register", response_model=User)
@@ -112,20 +178,20 @@ async def register(user: UserCreate):
         Created user
         
     Raises:
-        HTTPException: If username already exists
+        HTTPException: If username or email already exists
     """
-    # Check if user already exists
-    if await user_repository.user_exists(user.username):
+    # Check if user already exists (by username or email)
+    if await user_exists(user.username, user.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
+            detail="Username or email already registered"
         )
     
-    # Hash password and create user
+    # Hash password and create user in MongoDB
     hashed_password = get_password_hash(user.password)
-    await user_repository.create_user(user.username, hashed_password)
+    await create_user(user.username, user.email, hashed_password)
     
-    return User(username=user.username)
+    return User(username=user.username, email=user.email)
 
 
 @router.post("/login", response_model=Token)
@@ -142,7 +208,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     Raises:
         HTTPException: If credentials are invalid
     """
-    user = await user_repository.get_user_by_username(form_data.username)
+    user = await get_user_by_username(form_data.username)
     
     if not user or not verify_password(form_data.password, user["hashed_password"]):
         raise HTTPException(
@@ -161,14 +227,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.get("/me", response_model=User)
+@router.get("/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):
-    """
-    Get current user information
-    
-    Args:
-        current_user: Current authenticated user
-        
-    Returns:
-        Current user data
-    """
-    return current_user
+    #Get current user information
+    db_user = await get_user_by_username(current_user.username)
+    return User(username=db_user["username"], email=db_user.get("email", ""))
