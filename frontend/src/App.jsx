@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-
 import LoginForm from './pages/login.jsx';
 import Sidebar from './components/sidebar';
 import ChatWindow from './pages/chatroom.jsx';
@@ -12,7 +11,9 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');  
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');  
   const [isLogin, setIsLogin] = useState(true);
   const [error, setError] = useState('');
 
@@ -23,10 +24,13 @@ export default function App() {
   const [newRoomName, setNewRoomName] = useState('');
 
   // ---------- CHAT ----------
-  const [messages, setMessages] = useState([]); // current room messages
-  const [messagesByRoom, setMessagesByRoom] = useState({}); // store messages for all rooms
+  const [messages, setMessages] = useState([]);
+  const [messagesByRoom, setMessagesByRoom] = useState({});
   const [newMessage, setNewMessage] = useState('');
   const ws = useRef(null);
+
+  // ---------- PROFILE ----------
+  const [showProfile, setShowProfile] = useState(false);
 
   // ---------- CLEANUP ----------
   useEffect(() => {
@@ -50,7 +54,11 @@ export default function App() {
         const registerRes = await fetch(`${API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ 
+            username, 
+            email,  
+            password 
+          }),
         });
 
         if (!registerRes.ok) {
@@ -75,8 +83,25 @@ export default function App() {
 
       const data = await loginRes.json();
       setToken(data.access_token);
-      setUser({ username });
+
+      const userRes = await fetch(`${API_URL}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${data.access_token}` }
+    });
+    
+      if (userRes.ok) {
+        const userData = await userRes.json();
+        setUser({ 
+          username: userData.username, 
+          email: userData.email  // ✅ Now includes email!
+        });
+      } else {
+        // Fallback if /auth/me fails
+        setUser({ username });
+      }
+
       setPassword('');
+      setEmail('');  
+      setConfirmPassword('');  
     } catch (err) {
       setError(err.message);
     }
@@ -123,7 +148,6 @@ export default function App() {
 
     setCurrentRoom(room);
 
-    // Load messages for this room from the store or empty
     const roomMessages = messagesByRoom[room.id] || [];
     setMessages(roomMessages);
 
@@ -132,10 +156,8 @@ export default function App() {
     socket.onmessage = (event) => {
       const msg = JSON.parse(event.data);
 
-      // Update current room messages
       setMessages((prev) => [...prev, msg]);
 
-      // Update global messages by room
       setMessagesByRoom((prev) => {
         const roomMsgs = prev[room.id] ? [...prev[room.id], msg] : [msg];
         return { ...prev, [room.id]: roomMsgs };
@@ -171,6 +193,8 @@ export default function App() {
     setMessagesByRoom({});
     setCurrentRoom(null);
     setUsername('');
+    setEmail('');  
+    setConfirmPassword(''); R
   };
 
   // ================= RENDER =================
@@ -178,23 +202,37 @@ export default function App() {
     return (
       <LoginForm
         username={username}
+        email={email}  
         password={password}
+        confirmPassword={confirmPassword}  
         isLogin={isLogin}
         error={error}
         setUsername={setUsername}
+        setEmail={setEmail}  
         setPassword={setPassword}
+        setConfirmPassword={setConfirmPassword}  
         setIsLogin={setIsLogin}
         onSubmit={handleAuth}
       />
     );
   }
-
+  if (showProfile) {
+      return (
+        <UserProfile
+          user={user}
+          token={token} 
+          onClose={() => setShowProfile(false)}
+          onLogout={logout}
+        />
+      );
+    }
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar
         user={user}
         rooms={rooms}
-        messagesByRoom={messagesByRoom} // <-- pass all messages
+        onShowProfile={() => setShowProfile(true)}
+        messagesByRoom={messagesByRoom}
         currentRoom={currentRoom}
         showCreateRoom={showCreateRoom}
         newRoomName={newRoomName}
@@ -217,4 +255,5 @@ export default function App() {
       />
     </div>
   );
+  
 }
