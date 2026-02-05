@@ -233,7 +233,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
             print(f"🔌 WebSocket disconnected normally: {username}")
             username = await manager.disconnect(websocket, room_id)
             
-            if username:
+            # Only send leave message for normal closure (code 1000 - user clicked leave button)
+            # Don't send for code 1001 (going away - tab close/logout) or other codes
+            if username and hasattr(e, 'code') and e.code == 1000:
                 # Create leave message
                 leave_message = {
                     "type": "user_left",
@@ -254,6 +256,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                 # Broadcast via Redis
                 await pubsub_service.publish_message(room_id, leave_message)
                 print(f"👋 User left broadcast: {username}")
+            else:
+                code = e.code if hasattr(e, 'code') else 'unknown'
+                print(f"🚪 Silent disconnect (code={code}): {username}")
                 
         except Exception as e:
             print(f"❌ Error in WebSocket loop: {e}")

@@ -169,7 +169,7 @@ export default function App() {
   };
 
   const leaveRoom = () => {
-    if (ws.current) ws.current.close();
+    if (ws.current) ws.current.close(1000, 'User left room');  // Code 1000 = normal closure
     ws.current = null;
     setCurrentRoom(null);
     setMessages([]);
@@ -184,7 +184,12 @@ export default function App() {
 
   // ================= LOGOUT =================
   const logout = () => {
-    if (ws.current) ws.current.close();
+    // Close WebSocket silently without triggering leave message
+    if (ws.current) {
+      ws.current.onmessage = null;
+      ws.current.onerror = null;
+      ws.current.close();
+    }
 
     setUser(null);
     setToken(null);
@@ -193,8 +198,8 @@ export default function App() {
     setMessagesByRoom({});
     setCurrentRoom(null);
     setUsername('');
-    setEmail('');  
-    setConfirmPassword(''); R
+    setEmail('');
+    setConfirmPassword('');
   };
 
   // ================= RENDER =================
