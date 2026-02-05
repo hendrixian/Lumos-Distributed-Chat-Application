@@ -9,7 +9,7 @@ class UserCreate(BaseModel):
 
 class User(BaseModel):
     username: str
-    email: EmailStr
+    email: Optional[str] = "" 
 
 class Token(BaseModel):
     access_token: str
