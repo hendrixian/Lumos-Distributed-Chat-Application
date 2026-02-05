@@ -9,6 +9,7 @@ from datetime import datetime
 import json
 from ..services.pubsub import pubsub_service
 from ..repositories.message_repo import message_repository
+from ..repositories.room_repo import room_repository
 
 
 class ConnectionManager:
@@ -79,6 +80,10 @@ class ConnectionManager:
                 content=join_message["content"],
                 message_type="user_joined"
             )
+            
+            # Add member to room in database
+            await room_repository.add_member(room_id, username)
+            print(f"👥 Added {username} to room members in database")
             
             print(f"📤 Broadcasting join via Redis")
             
@@ -230,12 +235,18 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                 print(f"✅ Published: {result}")
                 
         except WebSocketDisconnect as e:
-            print(f"🔌 WebSocket disconnected normally: {username}")
+            print(f"🔌 WebSocket disconnected: {username}")
             username = await manager.disconnect(websocket, room_id)
             
-            # Only send leave message for normal closure (code 1000 - user clicked leave button)
-            # Don't send for code 1001 (going away - tab close/logout) or other codes
-            if username and hasattr(e, 'code') and e.code == 1000:
+            # Check disconnect reason
+            code = e.code if hasattr(e, 'code') else None
+            
+            # ONLY remove member and send message on EXPLICIT leave (code 1000)
+            if username and code == 1000:
+                # Remove member from room in database
+                await room_repository.remove_member(room_id, username)
+                print(f"👥 Removed {username} from room members (explicit leave)")
+                
                 # Create leave message
                 leave_message = {
                     "type": "user_left",
@@ -256,15 +267,21 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                 # Broadcast via Redis
                 await pubsub_service.publish_message(room_id, leave_message)
                 print(f"👋 User left broadcast: {username}")
+                
             else:
-                code = e.code if hasattr(e, 'code') else 'unknown'
+                # Logout, browser close, etc. - user STAYS in members list
                 print(f"🚪 Silent disconnect (code={code}): {username}")
+                print(f"   → User STAYS in room members (will rejoin on next login)")
                 
         except Exception as e:
             print(f"❌ Error in WebSocket loop: {e}")
             import traceback
             traceback.print_exc()
-            await manager.disconnect(websocket, room_id)
+            username = await manager.disconnect(websocket, room_id)
+            
+            # Don't remove from members on error - user stays in room
+            if username:
+                print(f"🔌 Error disconnect: {username} stays in room members")
             
     except Exception as e:
         print(f"❌ Failed to connect WebSocket: {e}")

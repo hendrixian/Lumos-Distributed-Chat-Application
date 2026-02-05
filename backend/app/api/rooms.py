@@ -36,7 +36,8 @@ async def create_room(room: RoomCreate, current_user: User = Depends(get_current
         id=room_doc["id"],
         name=room_doc["name"],
         created_at=room_doc["created_at"],
-        created_by=room_doc["created_by"]
+        created_by=room_doc["created_by"],
+        members=room_doc.get("members", [])
     )
 
 
@@ -49,7 +50,7 @@ async def get_rooms(current_user: User = Depends(get_current_user)):
         current_user: Current authenticated user
         
     Returns:
-        List of all rooms
+        List of all rooms with member counts
     """
     rooms = await room_repository.get_all_rooms()
     
@@ -58,7 +59,8 @@ async def get_rooms(current_user: User = Depends(get_current_user)):
             id=room["id"],
             name=room["name"],
             created_at=room["created_at"],
-            created_by=room["created_by"]
+            created_by=room["created_by"],
+            members=room.get("members", [])
         )
         for room in rooms
     ]
@@ -74,7 +76,7 @@ async def get_room(room_id: str, current_user: User = Depends(get_current_user))
         current_user: Current authenticated user
         
     Returns:
-        Room data
+        Room data with current members
         
     Raises:
         HTTPException: If room not found
@@ -91,7 +93,8 @@ async def get_room(room_id: str, current_user: User = Depends(get_current_user))
         id=room["id"],
         name=room["name"],
         created_at=room["created_at"],
-        created_by=room["created_by"]
+        created_by=room["created_by"],
+        members=room.get("members", [])
     )
 
 
@@ -129,3 +132,62 @@ async def delete_room(room_id: str, current_user: User = Depends(get_current_use
     await message_repository.delete_room_messages(room_id)
     
     return {"message": "Room deleted successfully"}
+
+
+@router.get("/{room_id}/members", response_model=List[str])
+async def get_room_members(room_id: str, current_user: User = Depends(get_current_user)):
+    """
+    Get list of members currently in a room
+    
+    Args:
+        room_id: Room identifier
+        current_user: Current authenticated user
+        
+    Returns:
+        List of usernames of members in the room
+        
+    Raises:
+        HTTPException: If room not found
+    """
+    room = await room_repository.get_room_by_id(room_id)
+    
+    if not room:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Room not found"
+        )
+    
+    return room.get("members", [])
+
+
+@router.get("/{room_id}/members/count")
+async def get_room_member_count(room_id: str, current_user: User = Depends(get_current_user)):
+    """
+    Get count of members currently in a room
+    
+    Args:
+        room_id: Room identifier
+        current_user: Current authenticated user
+        
+    Returns:
+        Dictionary with member count and list of members
+        
+    Raises:
+        HTTPException: If room not found
+    """
+    room = await room_repository.get_room_by_id(room_id)
+    
+    if not room:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Room not found"
+        )
+    
+    members = room.get("members", [])
+    
+    return {
+        "room_id": room_id,
+        "room_name": room["name"],
+        "member_count": len(members),
+        "members": members
+    }

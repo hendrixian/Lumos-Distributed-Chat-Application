@@ -2,7 +2,7 @@
 Room repository - handles all room-related database operations
 Provides clean abstraction over MongoDB room collection
 """
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, List
 from datetime import datetime
 from ..core.database import mongodb
 
@@ -34,7 +34,8 @@ class RoomRepository:
             "id": room_id,
             "name": name,
             "created_by": created_by,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
+            "members": []  # Initialize with empty members list
         }
         await self.collection.insert_one(room_doc)
         return room_doc
@@ -74,6 +75,53 @@ class RoomRepository:
         """
         result = await self.collection.delete_one({"id": room_id})
         return result.deleted_count > 0
+    
+    async def add_member(self, room_id: str, username: str) -> bool:
+        """
+        Add a member to a room
+        
+        Args:
+            room_id: Room ID
+            username: Username to add
+            
+        Returns:
+            True if added, False otherwise
+        """
+        result = await self.collection.update_one(
+            {"id": room_id},
+            {"$addToSet": {"members": username}}  # $addToSet prevents duplicates
+        )
+        return result.modified_count > 0 or result.matched_count > 0
+    
+    async def remove_member(self, room_id: str, username: str) -> bool:
+        """
+        Remove a member from a room
+        
+        Args:
+            room_id: Room ID
+            username: Username to remove
+            
+        Returns:
+            True if removed, False otherwise
+        """
+        result = await self.collection.update_one(
+            {"id": room_id},
+            {"$pull": {"members": username}}
+        )
+        return result.modified_count > 0
+    
+    async def get_room_members(self, room_id: str) -> List[str]:
+        """
+        Get list of members in a room
+        
+        Args:
+            room_id: Room ID
+            
+        Returns:
+            List of usernames
+        """
+        room = await self.get_room_by_id(room_id)
+        return room.get("members", []) if room else []
 
 
 # Global repository instance

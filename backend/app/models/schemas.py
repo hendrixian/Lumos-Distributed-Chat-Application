@@ -26,6 +26,7 @@ class Room(BaseModel):
     name: str
     created_at: datetime
     created_by: str
+    members: List[str] = []  # List of usernames currently in the room
 
 class Message(BaseModel):
     room_id: str
