@@ -12,8 +12,11 @@ async def add_contact(
     data: AddContactRequest,
     current_user=Depends(get_current_user)  # Pydantic User model
 ):
-    users_col = mongodb.db.users
-    requests_col = mongodb.db.contact_requests
+    #users_col = mongodb.db.users
+    #requests_col = mongodb.db.contact_requests
+    users_col = mongodb.get_collection("users")
+    requests_col = mongodb.get_collection("contact_requests")
+
 
     # 1. Find target user
     target_user = await users_col.find_one({"username": data.username})
