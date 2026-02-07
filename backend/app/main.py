@@ -9,7 +9,7 @@ from .api import auth, rooms
 from .websocket.chat import websocket_endpoint
 from .core.config import settings
 from .core.database import mongodb, redis_cache
-
+from .api import contacts# added by thu for add contact requst
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -68,7 +68,7 @@ app.add_middleware(
 # Include API routers
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
-
+app.include_router(contacts.router, prefix="/contacts", tags=["contacts"])#added by thu for adding contact and sending request
 
 @app.websocket("/ws/{room_id}/{username}")
 async def websocket_route(websocket: WebSocket, room_id: str, username: str):

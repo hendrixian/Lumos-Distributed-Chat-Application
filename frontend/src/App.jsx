@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import LoginForm from './pages/login.jsx';
 import Sidebar from './components/sidebar';
 import ChatWindow from './pages/chatroom.jsx';
+import AddContact from './components/AddContact.jsx';//added by thu for add contact
 
 const API_URL = 'http://localhost:8002';
 const WS_URL = 'ws://localhost:8002';
@@ -248,7 +249,8 @@ export default function App() {
         onJoinRoom={joinRoom}
         onLogout={logout}
       />
-
+    <div className="flex-1 flex flex-col">
+      <AddContact token={token} />{/*added by thu for add contact button*/}
       <ChatWindow
         user={user}
         room={currentRoom}
@@ -259,6 +261,6 @@ export default function App() {
         onLeave={leaveRoom}
       />
     </div>
-  );
+    </div>
+  );}
   
-}
