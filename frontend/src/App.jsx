@@ -6,6 +6,8 @@ import AddContact from './components/AddContact.jsx';//added by thu for add cont
 
 const API_URL = 'http://localhost:8002';
 const WS_URL = 'ws://localhost:8002';
+//const ws = useRef(null);              // WebSocket for chat messages added by thu
+
 
 export default function App() {
   // ---------- AUTH ----------
@@ -29,7 +31,7 @@ export default function App() {
   const [messagesByRoom, setMessagesByRoom] = useState({});
   const [newMessage, setNewMessage] = useState('');
   const ws = useRef(null);
-
+  const notificationWs = useRef(null); // notification socket (added by thu for contact request notification)
   // ---------- PROFILE ----------
   const [showProfile, setShowProfile] = useState(false);
 
@@ -44,6 +46,46 @@ export default function App() {
   useEffect(() => {
     if (token) fetchRooms();
   }, [token]);
+  //added by thu for getting notifications when sender send contact request
+   useEffect(() => {
+  if (!token) return;
+  try{
+  // Connect to notification WebSocket added by thu
+  notificationWs.current = new WebSocket(
+    `ws://localhost:8002/ws/notifications?token=${token}`
+  );
+
+  notificationWs.current.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === "contact_request") {
+      alert(`${data.from_username} sent you a contact request`);
+    }
+
+    if (data.type === "contact_accepted") {
+      alert(`Your contact request was accepted by ${data.to_username}`);
+      
+      // Optional: auto-create or refresh rooms
+      fetchRooms();
+    }
+
+    if (data.type === "contact_rejected") {
+      alert(`Your contact request was rejected by ${data.to_username}`);
+    }
+  };
+
+  notificationWs.current.onerror = (err) => {
+    console.error("Notification WS error", err);
+  };
+
+  return () => {
+    if (notificationWs.current) {
+      notificationWs.current.close();
+    }
+  };
+}catch(err){
+  console.error("Failed to connect to notification WebSocket", err);}
+}, [token]);
 
   // ================= AUTH =================
   const handleAuth = async (e) => {
@@ -191,7 +233,11 @@ export default function App() {
       ws.current.onerror = null;
       ws.current.close();
     }
-
+    // 🔥 Close notification WebSocket added by thu
+    if (notificationWs.current) {
+    notificationWs.current.close();
+    notificationWs.current = null;
+   }
     setUser(null);
     setToken(null);
     setRooms([]);
