@@ -132,11 +132,25 @@ async def respond_request(
         )
 
         # Create DM room
-        #room = await rooms_col.insert_one({
-           # "type": "dm",
-           # "participants": [sender, current_user.username],
-           # "created_at": datetime.utcnow()
-       # })
+        if data.action=="accept":
+            await users_col.update_one(
+                {"username":sender},
+                {"$addToSet":{"contacts":current_user.username}}
+                
+            )
+            await users_col.update_one(
+                {"username":current_user.username},
+                {"$addToSet":{"contacts":sender}}
+            )
+        dm_rooms_col = mongodb.get_collection("dm_rooms")
+
+
+        result =await dm_rooms_col.insert_one({
+          "participants": [sender, current_user.username],
+          "created_at": datetime.utcnow(),
+          "type": "dm"
+              })
+    
 
         # Update request
         await requests_col.update_one(
@@ -157,7 +171,7 @@ async def respond_request(
             sender,
             {
                 "type": "contact_accepted",
-                "room_id": str(room.inserted_id),
+                "room_id": str(result.inserted_id),
                 "by": current_user.username
             }
         )
