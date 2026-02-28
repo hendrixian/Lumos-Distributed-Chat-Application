@@ -1,24 +1,22 @@
-# app/api/ws.py added by thu for getting notifications when sender send contact request
-from fastapi import APIRouter, WebSocket, Depends
-from app.api.auth import get_current_user
+from fastapi import APIRouter, WebSocket
+
+from app.api.auth import get_user_from_token
 from app.core.ws_manager import manager
 
 router = APIRouter()
 
+
 @router.websocket("/ws/notifications")
 async def notifications_ws(websocket: WebSocket, token: str):
-    user = await get_current_user(token)
-    await manager.connect(user.username, websocket)
+    try:
+        user = await get_user_from_token(token)
+    except Exception:
+        await websocket.close(code=1008)
+        return
 
+    await manager.connect(user.username, websocket)
     try:
         while True:
             await websocket.receive_text()
-    except:
+    except Exception:
         manager.disconnect(user.username, websocket)
-
-
-
-
-
-
-

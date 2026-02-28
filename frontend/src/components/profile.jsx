@@ -1,8 +1,13 @@
-// UserProfile.jsx
-import { X, Edit2, LogOut } from 'lucide-react';
+import { Bell, Edit2, LogOut, X } from 'lucide-react';
 import { useState } from 'react';
 
-export default function UserProfile({ user, onClose, onLogout }) {
+export default function UserProfile({
+  user,
+  onClose,
+  onLogout,
+  onOpenRequests,
+  hasNotificationBadge,
+}) {
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(user.username);
   const [email, setEmail] = useState(user.email || '');
@@ -10,23 +15,18 @@ export default function UserProfile({ user, onClose, onLogout }) {
   const [status, setStatus] = useState(user.status || 'Online');
 
   const handleSave = () => {
-    // TODO: call API to update profile
     setEditing(false);
     console.log('Saved', { username, email, bio, status });
   };
 
   return (
     <>
-      {/* Blurred background overlay */}
       <div
         className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
         onClick={onClose}
       />
 
-      {/* Left-side sliding panel */}
-      <div className="fixed top-0 left-0 h-full w-80 bg-white shadow-xl z-50 flex flex-col
-                      transform transition-transform duration-300 translate-x-0">
-        {/* Header */}
+      <div className="fixed top-0 left-0 h-full w-80 bg-white shadow-xl z-50 flex flex-col transform transition-transform duration-300 translate-x-0">
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-xl font-bold">Profile</h2>
           <button onClick={onClose} className="text-gray-600 hover:text-gray-800">
@@ -34,7 +34,6 @@ export default function UserProfile({ user, onClose, onLogout }) {
           </button>
         </div>
 
-        {/* Profile content */}
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="flex flex-col items-center mb-6">
             <div className="w-24 h-24 rounded-full bg-gray-300 mb-2" />
@@ -71,7 +70,6 @@ export default function UserProfile({ user, onClose, onLogout }) {
             )}
           </div>
 
-          {/* Action buttons */}
           <div className="flex flex-col gap-3">
             {!editing ? (
               <button
@@ -88,6 +86,16 @@ export default function UserProfile({ user, onClose, onLogout }) {
                 Save
               </button>
             )}
+
+            <button
+              onClick={onOpenRequests}
+              className="relative flex items-center justify-center gap-2 w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700"
+            >
+              <Bell size={16} /> Chat Requests
+              {hasNotificationBadge && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-red-400" />
+              )}
+            </button>
 
             <button
               onClick={onLogout}

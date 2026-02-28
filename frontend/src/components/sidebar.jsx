@@ -1,11 +1,14 @@
-import { Plus, Trash2 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { Plus, Trash2, UserPlus } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import UserProfile from './profile.jsx';
+
+const API_URL = 'http://localhost:8002';
 
 export default function Sidebar({
   user,
+  token,
   rooms,
-  messagesByRoom, // { roomId: [message1, message2, ...] }
+  messagesByRoom,
   currentRoom,
   showCreateRoom,
   newRoomName,
@@ -14,43 +17,105 @@ export default function Sidebar({
   onCreateRoom,
   onDeleteRoom,
   onJoinRoom,
-  onLogout
+  onLogout,
+  onOpenRequestsPage,
+  hasNotificationBadge,
+  onRefreshBadge,
 }) {
   const [showProfile, setShowProfile] = useState(false);
   const [search, setSearch] = useState('');
+  const [userResults, setUserResults] = useState([]);
+  const [searchError, setSearchError] = useState('');
+  const [searchSuccess, setSearchSuccess] = useState('');
 
-  // Filter rooms by search text
+  useEffect(() => {
+    if (!token) return;
+    const query = search.trim();
+    if (!query) {
+      setUserResults([]);
+      setSearchError('');
+      setSearchSuccess('');
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/users/search?username=${encodeURIComponent(query)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) {
+          const data = await res.json();
+          setSearchError(data.detail || 'Search failed');
+          setUserResults([]);
+          return;
+        }
+        const data = await res.json();
+        setUserResults(data);
+        setSearchError(data.length === 0 ? 'No users found' : '');
+      } catch (err) {
+        setSearchError('Search failed');
+        setUserResults([]);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [search, token]);
+
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) =>
       room.name.toLowerCase().includes(search.toLowerCase())
     );
   }, [rooms, search]);
 
+  const sendRequest = async (username) => {
+    setSearchError('');
+    setSearchSuccess('');
+    try {
+      const res = await fetch(`${API_URL}/contacts/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ username }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setSearchError(data.detail || 'Failed to send request');
+        return;
+      }
+      setSearchSuccess(`Request sent to ${username}`);
+      if (onRefreshBadge) onRefreshBadge();
+    } catch (err) {
+      setSearchError('Failed to send request');
+    }
+  };
+
   return (
     <>
       <div className="w-80 bg-white border-r flex flex-col relative">
-        {/* Top Bar (Telegram-style) */}
         <div className="h-14 px-3 border-b flex items-center gap-3">
-          {/* Menu Button */}
           <button
             onClick={() => setShowProfile(true)}
-            className="p-2 rounded-full hover:bg-gray-100"
+            className="relative p-2 rounded-full hover:bg-gray-100"
             title="Menu"
           >
-            ☰
+            &#9776;
+            {hasNotificationBadge && (
+              <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-600" />
+            )}
           </button>
 
-          {/* Search */}
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search chats"
+            placeholder="Search chats or users"
             className="flex-1 px-4 py-2 text-sm bg-gray-100 rounded-full outline-none focus:bg-white focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
-        {/* Create Room */}
         <div className="p-4 border-b">
           {showCreateRoom ? (
             <div className="flex gap-2">
@@ -75,10 +140,35 @@ export default function Sidebar({
               <Plus /> Create Room
             </button>
           )}
+          {searchSuccess && <p className="text-xs text-green-600 mt-2">{searchSuccess}</p>}
+          {searchError && <p className="text-xs text-red-600 mt-2">{searchError}</p>}
         </div>
 
-        {/* Room List */}
         <div className="flex-1 overflow-y-auto">
+          {search.trim() && (
+            <div className="border-b">
+              <p className="px-4 pt-3 pb-2 text-xs font-semibold text-gray-500">Users</p>
+              {userResults.length === 0 && (
+                <p className="px-4 pb-3 text-sm text-gray-400">No matching users</p>
+              )}
+              {userResults.map((item) => (
+                <div
+                  key={`user-${item.username}`}
+                  className="px-4 py-2 flex items-center justify-between hover:bg-gray-50"
+                >
+                  <span className="text-sm font-medium">{item.username}</span>
+                  <button
+                    className="inline-flex items-center gap-1 text-xs bg-blue-600 text-white px-2 py-1 rounded"
+                    onClick={() => sendRequest(item.username)}
+                  >
+                    <UserPlus size={14} /> Send
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="px-4 pt-3 pb-2 text-xs font-semibold text-gray-500">Chats</p>
           {filteredRooms.map((room) => {
             const messages = messagesByRoom?.[room.id] || [];
             const latestMessage =
@@ -93,16 +183,12 @@ export default function Sidebar({
                 onClick={() => onJoinRoom(room)}
               >
                 <div className="flex justify-between gap-2 items-center">
-                  {/* Left: Avatar + Room Info */}
                   <div className="flex items-center gap-3 min-w-0">
-                    {/* Group Avatar */}
                     <img
                       src={room.avatar || 'https://via.placeholder.com/40'}
                       alt={room.name}
                       className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                     />
-
-                    {/* Room Name + Latest Message */}
                     <div className="flex flex-col min-w-0">
                       <h3 className="font-medium truncate">{room.name}</h3>
                       {latestMessage && (
@@ -113,7 +199,6 @@ export default function Sidebar({
                     </div>
                   </div>
 
-                  {/* Right: Delete button if creator */}
                   {room.created_by === user.username && (
                     <button
                       onClick={(e) => {
@@ -133,10 +218,14 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* User Profile Panel */}
       {showProfile && (
         <UserProfile
           user={user}
+          hasNotificationBadge={hasNotificationBadge}
+          onOpenRequests={() => {
+            setShowProfile(false);
+            onOpenRequestsPage();
+          }}
           onClose={() => setShowProfile(false)}
           onLogout={onLogout}
         />

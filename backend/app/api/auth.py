@@ -88,6 +88,21 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         headers={"WWW-Authenticate": "Bearer"},
     )
     
+    return await get_user_from_token(token, credentials_exception)
+
+
+async def get_user_from_token(token: str, credentials_exception: Optional[HTTPException] = None) -> User:
+    """
+    Resolve a User from a raw JWT token string.
+    Useful for contexts like WebSocket query params where Depends() isn't used.
+    """
+    if credentials_exception is None:
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         username: str = payload.get("sub")
@@ -96,13 +111,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    
-    # Get user from MongoDB
+
     user = await get_user_by_username(token_data.username)
-    
     if user is None:
         raise credentials_exception
-    
+
     return User(username=user["username"], email=user.get("email"))
 
 

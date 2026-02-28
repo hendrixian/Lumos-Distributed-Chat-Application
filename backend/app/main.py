@@ -1,62 +1,52 @@
 """
-FastAPI main application
-Initializes the distributed chat system with MongoDB and Redis
+FastAPI main application.
+Initializes chat APIs, database connections, and websocket routes.
 """
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from .api import auth, rooms
-from .websocket.chat import websocket_endpoint
+
+from .api import auth, contacts, rooms, users
+from .api.contacts import ensure_contact_indexes
+from .api.ws import router as notification_ws_router
 from .core.config import settings
 from .core.database import mongodb, redis_cache
-from .api import users,contacts# added by thu for add contact requst
+from .websocket.chat import websocket_endpoint
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Application lifespan manager
-    Handles startup and shutdown events for database connections
-    """
-    # Startup: Connect to databases
-    print("\n🚀 Starting Distributed Chat Application...")
+    # Startup
+    print("\nStarting Distributed Chat Application...")
     await mongodb.connect()
     await redis_cache.connect()
-    print("✓ All systems ready!\n")
-    
+    await ensure_contact_indexes()
+    print("All systems ready\n")
+
     yield
-    
-    # Shutdown: Disconnect from databases
-    print("\n🛑 Shutting down...")
+
+    # Shutdown
+    print("\nShutting down...")
     await mongodb.disconnect()
     await redis_cache.disconnect()
-    print("✓ Cleanup complete\n")
+    print("Cleanup complete\n")
 
 
-# Initialize FastAPI app with lifespan
-app = FastAPI(
-    title=settings.app_name,
-    lifespan=lifespan
-)
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-# CORS middleware - allows frontend to communicate with backend
-# In main.py - Update the CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        # Backend port 
         "http://127.0.0.1:8002",
         "http://localhost:8002",
-        
-        # Common frontend development ports
-        "http://127.0.0.1:3000",  # React default
+        "http://127.0.0.1:3000",
         "http://localhost:3000",
-        "http://127.0.0.1:5173",  # Vite default
+        "http://127.0.0.1:5173",
         "http://localhost:5173",
-        "http://127.0.0.1:8080",  # Vue/other default
+        "http://127.0.0.1:8080",
         "http://localhost:8080",
-        
-        # Add these if you're testing directly
-        "http://127.0.0.1:8000",  # Just in case
+        "http://127.0.0.1:8000",
         "http://localhost:8000",
     ],
     allow_credentials=True,
@@ -65,40 +55,31 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Include API routers
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
-app.include_router(users.router, prefix="/users", tags=["users"])#added by thu for searching user to add contact
-app.include_router(contacts.router, prefix="/contacts", tags=["contacts"])#added by thu for adding contact and sending request
+app.include_router(users.router, prefix="/users", tags=["users"])
+app.include_router(contacts.router, prefix="/contacts", tags=["contacts"])
+app.include_router(notification_ws_router, tags=["notifications"])
+
 
 @app.websocket("/ws/{room_id}/{username}")
 async def websocket_route(websocket: WebSocket, room_id: str, username: str):
-    """
-    WebSocket endpoint for real-time chat
-    
-    Args:
-        websocket: WebSocket connection
-        room_id: Chat room identifier
-        username: User's username
-    """
     await websocket_endpoint(websocket, room_id, username)
 
 
 @app.get("/")
 async def root():
-    """Root endpoint - API information"""
     return {
         "message": "Distributed Chat API",
         "version": "2.0.0",
-        "features": ["MongoDB", "Redis", "Distributed WebSocket"]
+        "features": ["MongoDB", "Redis", "Distributed WebSocket"],
     }
 
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
     return {
         "status": "healthy",
         "mongodb": "connected" if mongodb.client else "disconnected",
-        "redis": "connected" if redis_cache.redis else "disconnected"
+        "redis": "connected" if redis_cache.redis else "disconnected",
     }

@@ -8,11 +8,22 @@ class ConnectionManager:
         self.active_connections.setdefault(username, []).append(websocket)
 
     def disconnect(self, username: str, websocket):
-        self.active_connections[username].remove(websocket)
+        if username not in self.active_connections:
+            return
+        if websocket in self.active_connections[username]:
+            self.active_connections[username].remove(websocket)
+        if not self.active_connections[username]:
+            del self.active_connections[username]
 
     async def send(self, username: str, message: dict):
         if username in self.active_connections:
+            stale = []
             for ws in self.active_connections[username]:
-                await ws.send_json(message)
+                try:
+                    await ws.send_json(message)
+                except Exception:
+                    stale.append(ws)
+            for ws in stale:
+                self.disconnect(username, ws)
 
 manager = ConnectionManager()

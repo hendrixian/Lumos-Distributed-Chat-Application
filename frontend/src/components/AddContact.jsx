@@ -1,146 +1,163 @@
-//this code is added by thu for send contact request and search username to add contact
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
-export default function AddContact({ token }) {
-  const [searchUsername, setSearchUsername] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
+const API_URL = 'http://localhost:8002';
+
+export default function AddContact({
+  token,
+  onRoomRefresh,
+  refreshSignal,
+  onNotificationChange,
+  onBack,
+}) {
+  const [requests, setRequests] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [requests, setRequests] = useState([]);
 
-  const API_URL = 'http://localhost:8002'; // backend URL
+  const authHeader = { Authorization: `Bearer ${token}` };
 
-  // Load pending requests
   const fetchRequests = async () => {
-    const res = await fetch(`${API_URL}/contacts/requests`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const res = await fetch(`${API_URL}/contacts/requests`, { headers: authHeader });
+    if (!res.ok) return [];
+    const data = await res.json();
+    setRequests(data);
+    return data;
+  };
+
+  const fetchNotifications = async () => {
+    const res = await fetch(`${API_URL}/contacts/notifications`, {
+      headers: authHeader,
     });
-    if (res.ok) {
-      const data = await res.json();
-      setRequests(data);
+    if (!res.ok) return [];
+    const data = await res.json();
+    setNotifications(data);
+    return data;
+  };
+
+  const refreshAll = async () => {
+    const [incoming, allNotifications] = await Promise.all([
+      fetchRequests(),
+      fetchNotifications(),
+    ]);
+
+    if (onNotificationChange) {
+      const unread = allNotifications.filter((n) => !n.read).length;
+      onNotificationChange(unread + incoming.length);
     }
   };
 
   useEffect(() => {
-    if (token) fetchRequests();
-  }, [token]);
+    if (!token) return;
+    refreshAll();
+  }, [token, refreshSignal]);
 
-  // Search users by username (no request sent yet)
-  const handleSearch = async () => {
-    setError('');
-    setSuccess('');
-    if (!searchUsername) return;
-
-    try {
-      const res = await fetch(`${API_URL}/users/search?username=${searchUsername}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('User not found');
-      const data = await res.json();
-      setSearchResults([data]); // show as list
-    } catch (err) {
-      setSearchResults([]);
-      setError(err.message);
-    }
-  };
-
-  // Send contact request
-  const handleAdd = async (username) => {
-    setError('');
-    setSuccess('');
-    try {
-      const res = await fetch(`${API_URL}/contacts/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ username }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || 'Failed to send request');
-      }
-      setSuccess(`Request sent to ${username}!`);
-      setSearchResults([]);
-      setSearchUsername('');
-      fetchRequests(); // refresh pending requests
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  // Respond to request
   const handleRespond = async (requestId, action) => {
-    await fetch(`${API_URL}/contacts/respond`, {
+    setError('');
+    setSuccess('');
+
+    const res = await fetch(`${API_URL}/contacts/respond`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', ...authHeader },
       body: JSON.stringify({ request_id: requestId, action }),
     });
-    fetchRequests();
+
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.detail || 'Failed to process request');
+      return;
+    }
+
+    setSuccess(action === 'accept' ? 'Request accepted' : 'Request rejected');
+    await refreshAll();
+    if (action === 'accept' && onRoomRefresh) onRoomRefresh();
+  };
+
+  const markAsRead = async (notificationId) => {
+    await fetch(`${API_URL}/contacts/notifications/${notificationId}/read`, {
+      method: 'POST',
+      headers: authHeader,
+    });
+    refreshAll();
   };
 
   return (
-    <div className="p-4 border-b">
-      <h2 className="text-lg font-bold mb-2">Add Contact</h2>
+    <div className="flex-1 p-6 overflow-y-auto bg-gray-50">
+      <div className="max-w-3xl mx-auto bg-white border rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">Chat Requests</h2>
+          {onBack && (
+            <button
+              className="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded"
+              onClick={onBack}
+            >
+              Back to Chat
+            </button>
+          )}
+        </div>
 
-      <div className="flex gap-2 mb-4">
-        <input
-          type="text"
-          placeholder="Search username"
-          value={searchUsername}
-          onChange={(e) => setSearchUsername(e.target.value)}
-          className="border p-1 flex-1"
-        />
-        <button
-          type="button"
-          className="bg-blue-500 text-white px-2 py-1 rounded"
-          onClick={handleSearch} // only search, don't send request
-        >
-          Search
-        </button>
+        {error && <p className="text-red-600 mb-2">{error}</p>}
+        {success && <p className="text-green-600 mb-2">{success}</p>}
+
+        <h3 className="font-semibold mb-2">Incoming Requests</h3>
+        {requests.length === 0 && (
+          <p className="text-sm text-gray-500 mb-4">No pending requests</p>
+        )}
+        {requests.length > 0 && (
+          <ul className="mb-5 border rounded">
+            {requests.map((req) => (
+              <li
+                key={req.request_id}
+                className="flex justify-between items-center border-b px-3 py-2"
+              >
+                <span>{req.from_username}</span>
+                <div className="flex gap-2">
+                  <button
+                    className="bg-green-600 text-white px-3 rounded"
+                    onClick={() => handleRespond(req.request_id, 'accept')}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    className="bg-red-600 text-white px-3 rounded"
+                    onClick={() => handleRespond(req.request_id, 'reject')}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <h3 className="font-semibold mb-2">Notifications</h3>
+        {notifications.length === 0 && (
+          <p className="text-sm text-gray-500">No notifications</p>
+        )}
+        {notifications.length > 0 && (
+          <ul className="max-h-72 overflow-y-auto border rounded">
+            {notifications.map((note) => (
+              <li
+                key={note.notification_id}
+                className={`px-3 py-2 border-b text-sm ${
+                  note.read ? 'bg-gray-50' : 'bg-blue-50'
+                }`}
+              >
+                <div className="flex justify-between gap-2">
+                  <p>{note.message}</p>
+                  {!note.read && (
+                    <button
+                      className="text-xs text-blue-700 underline"
+                      onClick={() => markAsRead(note.notification_id)}
+                    >
+                      Mark read
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-
-      {error && <p className="text-red-500">{error}</p>}
-      {success && <p className="text-green-500">{success}</p>}
-
-      {/* Show search results */}
-      {searchResults.length > 0 && (
-        <ul className="mb-4 border p-2">
-          {searchResults.map((user) => (
-            <li key={user.username} className="flex justify-between items-center py-1">
-              <span>{user.username}</span>
-              <button
-                className="bg-blue-500 text-white px-2 py-1 rounded"
-                onClick={() => handleAdd(user.username)}
-              >
-                Add
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h3 className="text-md font-semibold mt-4 mb-2">Pending Requests</h3>
-      {requests.length === 0 && <p>No requests</p>}
-      <ul>
-        {requests.map((req) => (
-          <li key={req.request_id} className="flex justify-between items-center border-b py-1">
-            <span>{req.from_username}</span>
-            <div className="flex gap-1">
-              <button
-                className="bg-green-500 text-white px-2 rounded"
-                onClick={() => handleRespond(req.request_id, 'accept')}
-              >
-                Accept
-              </button>
-              <button
-                className="bg-red-500 text-white px-2 rounded"
-                onClick={() => handleRespond(req.request_id, 'reject')}
-              >
-                Reject
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
