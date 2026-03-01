@@ -7,3 +7,4 @@ class AddContactRequest(BaseModel):
 class RespondContactRequest(BaseModel):
     request_id: str
     action: str  # "accept" or "reject"
+    request_type: str = "contact"  # "contact" or "room_join"

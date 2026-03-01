@@ -45,14 +45,14 @@ export default function AddContact({
     refreshAll();
   }, [token, refreshSignal]);
 
-  const handleRespond = async (requestId, action) => {
+  const handleRespond = async (requestId, action, requestType = 'contact') => {
     setError('');
     setSuccess('');
 
     const res = await fetch(`${API_URL}/contacts/respond`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader },
-      body: JSON.stringify({ request_id: requestId, action }),
+      body: JSON.stringify({ request_id: requestId, action, request_type: requestType }),
     });
 
     if (!res.ok) {
@@ -61,7 +61,11 @@ export default function AddContact({
       return;
     }
 
-    setSuccess(action === 'accept' ? 'Request accepted' : 'Request rejected');
+    if (requestType === 'room_join') {
+      setSuccess(action === 'accept' ? 'Join request accepted' : 'Join request rejected');
+    } else {
+      setSuccess(action === 'accept' ? 'Request accepted' : 'Request rejected');
+    }
     await refreshAll();
     if (action === 'accept' && onRoomRefresh) onRoomRefresh();
   };
@@ -98,17 +102,25 @@ export default function AddContact({
           <ul className="mb-5 border rounded">
             {requests.map((req) => (
               <li key={req.request_id} className="flex justify-between items-center border-b px-3 py-2">
-                <span>{req.from_username}</span>
+                <span>
+                  {req.request_type === 'room_join'
+                    ? `${req.from_username} wants to join "${req.room_name || 'Private Room'}"`
+                    : `${req.from_username} sent you a contact request`}
+                </span>
                 <div className="flex gap-2">
                   <button
                     className="bg-green-600 text-white px-3 rounded"
-                    onClick={() => handleRespond(req.request_id, 'accept')}
+                    onClick={() =>
+                      handleRespond(req.request_id, 'accept', req.request_type || 'contact')
+                    }
                   >
                     Accept
                   </button>
                   <button
                     className="bg-red-600 text-white px-3 rounded"
-                    onClick={() => handleRespond(req.request_id, 'reject')}
+                    onClick={() =>
+                      handleRespond(req.request_id, 'reject', req.request_type || 'contact')
+                    }
                   >
                     Reject
                   </button>

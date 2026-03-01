@@ -15,6 +15,8 @@ export default function Sidebar({
   onCreateRoom,
   onDeleteRoom,
   onJoinRoom,
+  onJoinPublicRoom,
+  onRequestJoinPrivateRoom,
   onLogout,
   onUpdateUserProfile,
   onOpenRequestsPage,
@@ -23,7 +25,11 @@ export default function Sidebar({
 }) {
   const [showProfile, setShowProfile] = useState(false);
   const [search, setSearch] = useState('');
-  const [newRoomData, setNewRoomData] = useState({ name: '', description: '' });
+  const [newRoomData, setNewRoomData] = useState({
+    name: '',
+    description: '',
+    visibility: 'public',
+  });
   const [userResults, setUserResults] = useState([]);
   const [searchError, setSearchError] = useState('');
   const [searchSuccess, setSearchSuccess] = useState('');
@@ -94,8 +100,30 @@ export default function Sidebar({
     if (!newRoomData.name.trim()) return;
     const created = await onCreateRoom(newRoomData);
     if (!created) return;
-    setNewRoomData({ name: '', description: '' });
+    setNewRoomData({ name: '', description: '', visibility: 'public' });
     setShowCreateRoom(false);
+  };
+
+  const handleJoinPublicRoom = async (room) => {
+    setSearchError('');
+    setSearchSuccess('');
+    const result = await onJoinPublicRoom?.(room);
+    if (!result?.ok) {
+      setSearchError(result?.error || 'Failed to join room');
+      return;
+    }
+    setSearchSuccess(result.message || `Joined ${room.name}`);
+  };
+
+  const handleRequestPrivateRoom = async (room) => {
+    setSearchError('');
+    setSearchSuccess('');
+    const result = await onRequestJoinPrivateRoom?.(room);
+    if (!result?.ok) {
+      setSearchError(result?.error || 'Failed to send join request');
+      return;
+    }
+    setSearchSuccess(result.message || `Join request sent to ${room.name}`);
   };
 
   return (
@@ -138,6 +166,17 @@ export default function Sidebar({
                 onChange={(e) => setNewRoomData((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder="Description"
               />
+              <label className="text-xs text-gray-600">Room visibility</label>
+              <select
+                className="px-2 py-1 border rounded"
+                value={newRoomData.visibility}
+                onChange={(e) =>
+                  setNewRoomData((prev) => ({ ...prev, visibility: e.target.value }))
+                }
+              >
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
               <div className="flex gap-2">
                 <button onClick={handleCreateRoomSubmit} className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
                   Create
@@ -145,7 +184,7 @@ export default function Sidebar({
                 <button
                   onClick={() => {
                     setShowCreateRoom(false);
-                    setNewRoomData({ name: '', description: '' });
+                    setNewRoomData({ name: '', description: '', visibility: 'public' });
                   }}
                   className="flex-1 bg-gray-300 text-gray-800 py-2 rounded hover:bg-gray-400"
                 >
@@ -188,12 +227,18 @@ export default function Sidebar({
             const timestamp = latestMessage
               ? new Date(latestMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
               : '';
+            const isMember = Array.isArray(room.members) && room.members.includes(user.username);
+            const isGroupRoom = room.type !== 'dm';
+            const visibility = room.visibility === 'private' ? 'private' : 'public';
+            const canOpenRoom = room.type === 'dm' || isMember;
 
             return (
               <div
                 key={room.id}
-                className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${currentRoom?.id === room.id ? 'bg-blue-50' : ''}`}
-                onClick={() => onJoinRoom(room)}
+                className={`p-4 border-b ${canOpenRoom ? 'cursor-pointer hover:bg-gray-50' : ''} ${currentRoom?.id === room.id ? 'bg-blue-50' : ''}`}
+                onClick={() => {
+                  if (canOpenRoom) onJoinRoom(room);
+                }}
               >
                 <div className="flex justify-between gap-2 items-start">
                   <div className="flex items-center gap-3 min-w-0">
@@ -204,6 +249,9 @@ export default function Sidebar({
                     />
                     <div className="flex flex-col min-w-0">
                       <h3 className="font-medium truncate">{room.name}</h3>
+                      {isGroupRoom && !isMember && (
+                        <p className="text-[11px] text-gray-500 capitalize">{visibility} room</p>
+                      )}
                       {latestMessage && (
                         <p className="text-xs text-gray-400 truncate">
                           {latestMessage.username}: {latestMessage.content}
@@ -224,6 +272,28 @@ export default function Sidebar({
                         title="Delete room"
                       >
                         <Trash2 size={16} />
+                      </button>
+                    )}
+                    {isGroupRoom && !isMember && visibility === 'public' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleJoinPublicRoom(room);
+                        }}
+                        className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                      >
+                        Join room
+                      </button>
+                    )}
+                    {isGroupRoom && !isMember && visibility === 'private' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRequestPrivateRoom(room);
+                        }}
+                        className="text-xs bg-amber-600 text-white px-2 py-1 rounded hover:bg-amber-700"
+                      >
+                        Request to join
                       </button>
                     )}
                   </div>

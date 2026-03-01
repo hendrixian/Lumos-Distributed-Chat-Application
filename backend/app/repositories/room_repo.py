@@ -25,6 +25,7 @@ class RoomRepository:
         created_by: str,
         description: str = "",
         avatar_url: str = "",
+        visibility: str = "public",
     ) -> Dict:
         """
         Create a new chat room
@@ -41,10 +42,11 @@ class RoomRepository:
             "id": room_id,
             "name": name,
             "description": description or "",
+            "visibility": visibility or "public",
             "avatar_url": avatar_url or "",
             "created_by": created_by,
             "created_at": datetime.utcnow(),
-            "members": []  # Initialize with empty members list
+            "members": [created_by],  # Creator joins by default
         }
         await self.collection.insert_one(room_doc)
         return room_doc

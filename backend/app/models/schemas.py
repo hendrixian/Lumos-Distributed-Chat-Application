@@ -23,6 +23,7 @@ class TokenData(BaseModel):
 class RoomCreate(BaseModel):
     name: str
     description: Optional[str] = ""
+    visibility: Optional[str] = "public"
 
 class RoomMemberAdd(BaseModel):
     username: str
@@ -31,6 +32,7 @@ class Room(BaseModel):
     id: str
     name: str
     description: Optional[str] = ""
+    visibility: str = "public"
     avatar_url: Optional[str] = ""
     created_at: datetime
     created_by: str

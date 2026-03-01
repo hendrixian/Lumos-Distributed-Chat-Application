@@ -15,6 +15,9 @@ export default function GroupInfo({
   const [searchText, setSearchText] = useState('');
   const [editingGroupProfile, setEditingGroupProfile] = useState(false);
   const [groupDescription, setGroupDescription] = useState(group?.description || '');
+  const [groupVisibility, setGroupVisibility] = useState(
+    group?.visibility === 'private' ? 'private' : 'public'
+  );
   const [groupAvatarPreview, setGroupAvatarPreview] = useState(
     group?.avatar_url || group?.avatar || ''
   );
@@ -44,6 +47,7 @@ export default function GroupInfo({
     setSelectedMemberUsername(null);
     setEditingGroupProfile(false);
     setGroupDescription(group?.description || '');
+    setGroupVisibility(group?.visibility === 'private' ? 'private' : 'public');
     setGroupAvatarPreview(group?.avatar_url || group?.avatar || '');
     setGroupAvatarFile(null);
     setRemoveGroupAvatar(false);
@@ -86,6 +90,7 @@ export default function GroupInfo({
 
     const saved = await onUpdateGroupProfile?.(group.id, {
       description: groupDescription,
+      visibility: groupVisibility,
       avatarFile: groupAvatarFile,
       removeAvatar: removeGroupAvatar,
     });
@@ -148,9 +153,14 @@ export default function GroupInfo({
             <p className="text-lg font-semibold">{name}</p>
 
             {!editingGroupProfile ? (
-              <p className="text-sm text-gray-500 mt-1 text-center px-2">
-                {description?.trim() || 'No description available.'}
-              </p>
+              <>
+                <p className="text-sm text-gray-500 mt-1 text-center px-2">
+                  {description?.trim() || 'No description available.'}
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  Visibility: {group?.visibility === 'private' ? 'Private' : 'Public'}
+                </p>
+              </>
             ) : (
               <div className="w-full mt-2">
                 <textarea
@@ -160,6 +170,15 @@ export default function GroupInfo({
                   rows={3}
                   placeholder="Group description"
                 />
+                <label className="block text-xs text-gray-600 mt-2">Visibility</label>
+                <select
+                  value={groupVisibility}
+                  onChange={(e) => setGroupVisibility(e.target.value)}
+                  className="w-full px-3 py-2 border rounded text-sm mt-1"
+                >
+                  <option value="public">Public</option>
+                  <option value="private">Private</option>
+                </select>
                 <input
                   type="file"
                   accept="image/*"
@@ -207,6 +226,7 @@ export default function GroupInfo({
                   onClick={() => {
                     setEditingGroupProfile(false);
                     setGroupDescription(group?.description || '');
+                    setGroupVisibility(group?.visibility === 'private' ? 'private' : 'public');
                     setGroupAvatarPreview(group?.avatar_url || group?.avatar || '');
                     setGroupAvatarFile(null);
                     setRemoveGroupAvatar(false);

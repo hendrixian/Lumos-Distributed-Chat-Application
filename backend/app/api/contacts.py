@@ -13,6 +13,8 @@ from .schemas.contact import AddContactRequest, RespondContactRequest
 
 router = APIRouter()
 MAX_REJECTIONS_PER_PAIR = 3
+CONTACT_REQUEST_TYPE = "contact"
+ROOM_JOIN_REQUEST_TYPE = "room_join"
 
 
 def _as_object_id(raw_id: str) -> ObjectId:
@@ -24,6 +26,21 @@ def _as_object_id(raw_id: str) -> ObjectId:
 
 def _participants_key(user_a: str, user_b: str) -> str:
     return "|".join(sorted([user_a, user_b]))
+
+
+def _contact_request_filter() -> Dict[str, Any]:
+    """
+    Backward compatible filter:
+    older docs may not have 'type' set.
+    """
+    return {"$or": [{"type": CONTACT_REQUEST_TYPE}, {"type": {"$exists": False}}]}
+
+
+def _room_join_request_filter() -> Dict[str, Any]:
+    """
+    Backward compatible filter for room join requests.
+    """
+    return {"$or": [{"type": ROOM_JOIN_REQUEST_TYPE}, {"type": {"$exists": False}}]}
 
 
 def _serialize_notification(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -64,16 +81,25 @@ async def _create_notification(
 
 async def ensure_contact_indexes() -> None:
     requests_col = mongodb.get_collection("contact_requests")
+    room_join_requests_col = mongodb.get_collection("room_join_requests")
     notifications_col = mongodb.get_collection("notifications")
     rooms_col = mongodb.get_collection("rooms")
 
     await requests_col.create_index(
-        [("from_username", 1), ("to_username", 1), ("status", 1)]
+        [("type", 1), ("from_username", 1), ("to_username", 1), ("status", 1)]
     )
     await requests_col.create_index(
-        [("from_username", 1), ("to_username", 1), ("responded_at", -1)]
+        [("type", 1), ("from_username", 1), ("to_username", 1), ("responded_at", -1)]
     )
-    await requests_col.create_index([("to_username", 1), ("status", 1), ("created_at", -1)])
+    await requests_col.create_index(
+        [("type", 1), ("to_username", 1), ("status", 1), ("created_at", -1)]
+    )
+    await room_join_requests_col.create_index(
+        [("to_username", 1), ("status", 1), ("created_at", -1)]
+    )
+    await room_join_requests_col.create_index(
+        [("room_id", 1), ("from_username", 1), ("status", 1)]
+    )
     await notifications_col.create_index([("username", 1), ("created_at", -1)])
     await rooms_col.create_index([("type", 1), ("participants_key", 1)])
 
@@ -102,9 +128,14 @@ async def add_contact(
 
     rejected_count = await requests_col.count_documents(
         {
-            "from_username": current_user.username,
-            "to_username": target_username,
-            "status": "rejected",
+            "$and": [
+                _contact_request_filter(),
+                {
+                    "from_username": current_user.username,
+                    "to_username": target_username,
+                    "status": "rejected",
+                },
+            ]
         }
     )
     if rejected_count >= MAX_REJECTIONS_PER_PAIR:
@@ -115,15 +146,20 @@ async def add_contact(
 
     existing_pending = await requests_col.find_one(
         {
-            "status": "pending",
-            "$or": [
+            "$and": [
+                _contact_request_filter(),
                 {
-                    "from_username": current_user.username,
-                    "to_username": target_username,
-                },
-                {
-                    "from_username": target_username,
-                    "to_username": current_user.username,
+                    "status": "pending",
+                    "$or": [
+                        {
+                            "from_username": current_user.username,
+                            "to_username": target_username,
+                        },
+                        {
+                            "from_username": target_username,
+                            "to_username": current_user.username,
+                        },
+                    ],
                 },
             ],
         }
@@ -133,6 +169,7 @@ async def add_contact(
 
     insert_result = await requests_col.insert_one(
         {
+            "type": CONTACT_REQUEST_TYPE,
             "from_username": current_user.username,
             "to_username": target_username,
             "status": "pending",
@@ -164,20 +201,47 @@ async def add_contact(
 
 @router.get("/requests")
 async def get_requests(current_user: User = Depends(get_current_user)):
-    requests_col = mongodb.get_collection("contact_requests")
-    cursor = requests_col.find(
-        {"to_username": current_user.username, "status": "pending"}
-    ).sort("created_at", -1)
+    contact_requests_col = mongodb.get_collection("contact_requests")
+    room_join_requests_col = mongodb.get_collection("room_join_requests")
 
     results: List[Dict[str, Any]] = []
-    async for req in cursor:
+    contact_cursor = contact_requests_col.find(
+        {
+            **_contact_request_filter(),
+            "to_username": current_user.username,
+            "status": "pending",
+        }
+    ).sort("created_at", -1)
+    async for req in contact_cursor:
         results.append(
             {
                 "request_id": str(req["_id"]),
                 "from_username": req["from_username"],
                 "created_at": req["created_at"],
+                "request_type": CONTACT_REQUEST_TYPE,
             }
         )
+
+    room_join_cursor = room_join_requests_col.find(
+        {
+            **_room_join_request_filter(),
+            "to_username": current_user.username,
+            "status": "pending",
+        }
+    ).sort("created_at", -1)
+    async for req in room_join_cursor:
+        results.append(
+            {
+                "request_id": str(req["_id"]),
+                "from_username": req["from_username"],
+                "created_at": req["created_at"],
+                "request_type": ROOM_JOIN_REQUEST_TYPE,
+                "room_id": req.get("room_id"),
+                "room_name": req.get("room_name", ""),
+            }
+        )
+
+    results.sort(key=lambda item: item.get("created_at") or datetime.min, reverse=True)
     return results
 
 
@@ -217,88 +281,97 @@ async def respond_request(
     data: RespondContactRequest,
     current_user: User = Depends(get_current_user),
 ):
-    requests_col = mongodb.get_collection("contact_requests")
+    action = data.action.lower().strip()
+    request_type = (data.request_type or CONTACT_REQUEST_TYPE).lower().strip()
+    if action not in {"accept", "reject"}:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    if request_type not in {CONTACT_REQUEST_TYPE, ROOM_JOIN_REQUEST_TYPE}:
+        raise HTTPException(status_code=400, detail="Invalid request_type")
+
+    contact_requests_col = mongodb.get_collection("contact_requests")
+    room_join_requests_col = mongodb.get_collection("room_join_requests")
     users_col = mongodb.get_collection("users")
     rooms_col = mongodb.get_collection("rooms")
 
-    request = await requests_col.find_one(
-        {
-            "_id": _as_object_id(data.request_id),
-            "to_username": current_user.username,
-            "status": "pending",
-        }
-    )
-    if not request:
-        raise HTTPException(status_code=404, detail="Pending request not found")
-
-    sender = request["from_username"]
-    action = data.action.lower()
-
-    if action == "accept":
-        await users_col.update_one(
-            {"username": sender},
-            {"$addToSet": {"contacts": current_user.username}},
-        )
-        await users_col.update_one(
-            {"username": current_user.username},
-            {"$addToSet": {"contacts": sender}},
-        )
-
-        participants = sorted([sender, current_user.username])
-        participants_key = _participants_key(sender, current_user.username)
-
-        room_doc = await rooms_col.find_one(
-            {"type": "dm", "participants_key": participants_key}
-        )
-        if not room_doc:
-            room_id = str(uuid.uuid4())
-            room_name = f"DM: {participants[0]} & {participants[1]}"
-            room_doc = {
-                "id": room_id,
-                "name": room_name,
-                "created_by": current_user.username,
-                "created_at": datetime.utcnow(),
-                "members": participants,
-                "type": "dm",
-                "participants": participants,
-                "participants_key": participants_key,
-            }
-            await rooms_col.insert_one(room_doc)
-
-        await requests_col.update_one(
-            {"_id": request["_id"]},
+    if request_type == CONTACT_REQUEST_TYPE:
+        request = await contact_requests_col.find_one(
             {
-                "$set": {
-                    "status": "accepted",
-                    "responded_at": datetime.utcnow(),
-                }
-            },
-        )
-
-        await _create_notification(
-            username=sender,
-            notification_type="contact_accepted",
-            message=f"{current_user.username} accepted your contact request",
-            from_username=current_user.username,
-            request_id=str(request["_id"]),
-            room_id=room_doc["id"],
-        )
-
-        await manager.send(
-            sender,
-            {
-                "type": "contact_accepted",
-                "by": current_user.username,
+                **_contact_request_filter(),
+                "_id": _as_object_id(data.request_id),
                 "to_username": current_user.username,
-                "room_id": room_doc["id"],
-                "request_id": str(request["_id"]),
-            },
+                "status": "pending",
+            }
         )
+        if not request:
+            raise HTTPException(status_code=404, detail="Pending request not found")
 
-        return {"message": "Contact accepted", "room_id": room_doc["id"]}
+        sender = request["from_username"]
 
-    if action == "reject":
-        await requests_col.update_one(
+        if action == "accept":
+            await users_col.update_one(
+                {"username": sender},
+                {"$addToSet": {"contacts": current_user.username}},
+            )
+            await users_col.update_one(
+                {"username": current_user.username},
+                {"$addToSet": {"contacts": sender}},
+            )
+
+            participants = sorted([sender, current_user.username])
+            participants_key = _participants_key(sender, current_user.username)
+
+            room_doc = await rooms_col.find_one(
+                {"type": "dm", "participants_key": participants_key}
+            )
+            if not room_doc:
+                room_id = str(uuid.uuid4())
+                room_name = f"DM: {participants[0]} & {participants[1]}"
+                room_doc = {
+                    "id": room_id,
+                    "name": room_name,
+                    "created_by": current_user.username,
+                    "created_at": datetime.utcnow(),
+                    "members": participants,
+                    "type": "dm",
+                    "participants": participants,
+                    "participants_key": participants_key,
+                }
+                await rooms_col.insert_one(room_doc)
+
+            await contact_requests_col.update_one(
+                {"_id": request["_id"]},
+                {
+                    "$set": {
+                        "status": "accepted",
+                        "responded_at": datetime.utcnow(),
+                    }
+                },
+            )
+
+            await _create_notification(
+                username=sender,
+                notification_type="contact_accepted",
+                message=f"{current_user.username} accepted your contact request",
+                from_username=current_user.username,
+                request_id=str(request["_id"]),
+                room_id=room_doc["id"],
+            )
+
+            await manager.send(
+                sender,
+                {
+                    "type": "contact_accepted",
+                    "by": current_user.username,
+                    "to_username": current_user.username,
+                    "room_id": room_doc["id"],
+                    "request_id": str(request["_id"]),
+                },
+            )
+
+            return {"message": "Contact accepted", "room_id": room_doc["id"]}
+
+        await contact_requests_col.update_one(
             {"_id": request["_id"]},
             {
                 "$set": {
@@ -328,4 +401,105 @@ async def respond_request(
 
         return {"message": "Contact rejected"}
 
-    raise HTTPException(status_code=400, detail="Invalid action")
+    request = await room_join_requests_col.find_one(
+        {
+            **_room_join_request_filter(),
+            "_id": _as_object_id(data.request_id),
+            "to_username": current_user.username,
+            "status": "pending",
+        }
+    )
+    if not request:
+        raise HTTPException(status_code=404, detail="Pending request not found")
+
+    sender = request["from_username"]
+    room_id = request["room_id"]
+    room = await rooms_col.find_one({"id": room_id})
+    if not room:
+        await room_join_requests_col.update_one(
+            {"_id": request["_id"]},
+            {
+                "$set": {
+                    "status": "rejected",
+                    "responded_at": datetime.utcnow(),
+                }
+            },
+        )
+        raise HTTPException(status_code=404, detail="Room no longer exists")
+
+    if room.get("created_by") != current_user.username:
+        raise HTTPException(
+            status_code=403,
+            detail="Only room admin can respond to this join request",
+        )
+
+    room_name = room.get("name", "the room")
+    if action == "accept":
+        await rooms_col.update_one(
+            {"id": room_id},
+            {"$addToSet": {"members": sender}},
+        )
+
+        await room_join_requests_col.update_one(
+            {"_id": request["_id"]},
+            {
+                "$set": {
+                    "status": "accepted",
+                    "responded_at": datetime.utcnow(),
+                }
+            },
+        )
+
+        await _create_notification(
+            username=sender,
+            notification_type="room_join_accepted",
+            message=f"{current_user.username} accepted your request to join {room_name}",
+            from_username=current_user.username,
+            request_id=str(request["_id"]),
+            room_id=room_id,
+        )
+
+        await manager.send(
+            sender,
+            {
+                "type": "room_join_accepted",
+                "by": current_user.username,
+                "room_id": room_id,
+                "room_name": room_name,
+                "request_id": str(request["_id"]),
+            },
+        )
+
+        return {"message": "Join request accepted", "room_id": room_id}
+
+    await room_join_requests_col.update_one(
+        {"_id": request["_id"]},
+        {
+            "$set": {
+                "status": "rejected",
+                "responded_at": datetime.utcnow(),
+            }
+        },
+    )
+
+    await _create_notification(
+        username=sender,
+        notification_type="room_join_rejected",
+        message=f"{current_user.username} rejected your request to join {room_name}",
+        from_username=current_user.username,
+        request_id=str(request["_id"]),
+        room_id=room_id,
+    )
+
+    await manager.send(
+        sender,
+        {
+            "type": "room_join_rejected",
+            "by": current_user.username,
+            "room_id": room_id,
+            "room_name": room_name,
+            "request_id": str(request["_id"]),
+        },
+    )
+
+    return {"message": "Join request rejected"}

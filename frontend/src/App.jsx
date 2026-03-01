@@ -92,7 +92,9 @@ export default function App() {
     notificationWs.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       setContactEventVersion((prev) => prev + 1);
-      if (data.type === 'contact_accepted') fetchRooms();
+      if (data.type === 'contact_accepted' || data.type === 'room_join_accepted') {
+        fetchRooms();
+      }
     };
     notificationWs.current.onerror = console.error;
 
@@ -187,8 +189,10 @@ export default function App() {
         if (!prev?.id) return prev;
         return roomList.find((room) => room.id === prev.id) || prev;
       });
+      return roomList;
     } catch (err) {
       console.error('fetchRooms failed:', err);
+      return [];
     }
   };
 
@@ -223,11 +227,13 @@ export default function App() {
     if (!roomId) return false;
 
     const hasDescription = Object.prototype.hasOwnProperty.call(payload, 'description');
-    const { description, avatarFile, removeAvatar = false } = payload;
+    const hasVisibility = Object.prototype.hasOwnProperty.call(payload, 'visibility');
+    const { description, visibility, avatarFile, removeAvatar = false } = payload;
 
     try {
       const formData = new FormData();
       if (hasDescription) formData.append('description', description ?? '');
+      if (hasVisibility) formData.append('visibility', visibility ?? 'public');
       if (avatarFile) formData.append('avatar', avatarFile);
       if (removeAvatar) formData.append('remove_avatar', 'true');
 
@@ -252,6 +258,7 @@ export default function App() {
   const createRoom = async (roomData = {}) => {
     const roomName = (roomData?.name ?? '').trim();
     const roomDescription = (roomData?.description ?? '').trim();
+    const roomVisibility = roomData?.visibility === 'private' ? 'private' : 'public';
     if (!roomName) return false;
 
     try {
@@ -261,7 +268,11 @@ export default function App() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name: roomName, description: roomDescription }),
+        body: JSON.stringify({
+          name: roomName,
+          description: roomDescription,
+          visibility: roomVisibility,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || `Failed to create room (${res.status})`);
@@ -272,6 +283,45 @@ export default function App() {
     } catch (err) {
       console.error('createRoom failed:', err);
       return false;
+    }
+  };
+
+  const joinPublicRoom = async (room) => {
+    if (!room?.id) return { ok: false, error: 'Invalid room' };
+
+    try {
+      const res = await fetch(`${API_URL}/rooms/${room.id}/join`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `Failed to join room (${res.status})`);
+
+      const roomList = await fetchRooms();
+      const joinedRoom = data?.room || roomList.find((item) => item.id === room.id) || room;
+      joinRoom(joinedRoom);
+      return { ok: true, message: data?.message || 'Joined room successfully' };
+    } catch (err) {
+      console.error('joinPublicRoom failed:', err);
+      return { ok: false, error: err.message || 'Failed to join room' };
+    }
+  };
+
+  const requestJoinPrivateRoom = async (room) => {
+    if (!room?.id) return { ok: false, error: 'Invalid room' };
+
+    try {
+      const res = await fetch(`${API_URL}/rooms/${room.id}/join-request`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `Failed to request join (${res.status})`);
+
+      return { ok: true, message: data?.message || 'Join request sent' };
+    } catch (err) {
+      console.error('requestJoinPrivateRoom failed:', err);
+      return { ok: false, error: err.message || 'Failed to request room access' };
     }
   };
 
@@ -421,6 +471,8 @@ export default function App() {
         onCreateRoom={createRoom}
         onDeleteRoom={deleteRoom}
         onJoinRoom={joinRoom}
+        onJoinPublicRoom={joinPublicRoom}
+        onRequestJoinPrivateRoom={requestJoinPrivateRoom}
         onLogout={logout}
         onUpdateUserProfile={updateUserProfile}
         onOpenRequestsPage={() => setShowRequestsPage(true)}

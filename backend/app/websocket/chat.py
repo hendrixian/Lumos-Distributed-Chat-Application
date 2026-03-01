@@ -219,6 +219,26 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
     print(f"[ws] endpoint connect user={username} room={room_id}")
 
     try:
+        room = await room_repository.get_room_by_id(room_id)
+        if not room:
+            await websocket.close(code=1008, reason="Room not found")
+            return
+
+        room_type = room.get("type", "group")
+        if room_type == "dm":
+            is_member = username in room.get("participants", [])
+        else:
+            members = set(room.get("members", []))
+            is_member = username in members
+            # Backward compatibility for legacy rooms that may have missed creator in members.
+            if not is_member and username == room.get("created_by"):
+                await room_repository.add_member(room_id, username)
+                is_member = True
+
+        if not is_member:
+            await websocket.close(code=1008, reason="Not a room member")
+            return
+
         await manager.connect(websocket, room_id, username)
         print(f"[ws] connected user={username} room={room_id}")
 
