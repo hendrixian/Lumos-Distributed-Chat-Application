@@ -95,7 +95,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 MONGODB_URL=mongodb+srv://<username>:<password>@chatapp.k7wrdrd.mongodb.net/chatapp?retryWrites=true&w=majority&appName=chatapp
 MONGODB_DB_NAME=chatapp
 
-REDIS_HOST=localhost
+
+REDIS_HOST=redis-10419.c1.ap-southeast-1-1.ec2.cloud.redislabs.com
 REDIS_PORT=6379
 REDIS_DB=0
 REDIS_PASSWORD=
