@@ -1,13 +1,20 @@
-import { X } from 'lucide-react';
+import { X, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 
-export default function GroupInfo({ group, onClose, onMessage }) {
+export default function GroupInfo({ group, user, onClose, onMessage, onAddMember }) {
   const [selectedMember, setSelectedMember] = useState(null);
   const [searchText, setSearchText] = useState('');
 
   if (!group) return null;
 
-  const { name, members: memberUsernames = [], images, files, links } = group;
+  const {
+    name,
+    description,
+    members: memberUsernames = [],
+    images,
+    files,
+    links,
+  } = group;
 
   // Map usernames to objects (extend if more info is available)
   const members = memberUsernames.map((username) => ({
@@ -23,6 +30,7 @@ export default function GroupInfo({ group, onClose, onMessage }) {
   const filteredMembers = members.filter((m) =>
     m.username.toLowerCase().includes(searchText.toLowerCase())
   );
+  const isOwner = group?.created_by === user?.username;
 
   return (
     <div className="fixed top-0 right-0 h-full w-80 bg-white shadow-xl z-50 flex flex-col">
@@ -60,6 +68,9 @@ export default function GroupInfo({ group, onClose, onMessage }) {
           <div className="flex flex-col items-center p-6 border-b">
             <div className="w-24 h-24 rounded-full bg-gray-300 mb-3" />
             <p className="text-lg font-semibold">{name}</p>
+            <p className="text-sm text-gray-500 mt-1 text-center px-2">
+              {description?.trim() || 'No description available.'}
+            </p>
             <p className="text-sm text-gray-500">
               {totalMembers} members, {onlineMembers} online
             </p>
@@ -84,7 +95,18 @@ export default function GroupInfo({ group, onClose, onMessage }) {
           {/* Members List with Search */}
           <div className="flex-1 overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">Members</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold">Members</h3>
+                {isOwner && (
+                  <button
+                    onClick={() => onAddMember?.(group)}
+                    className="inline-flex items-center justify-center p-1.5 text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
+                    title="Add member"
+                  >
+                    <UserPlus size={14} />
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={searchText}

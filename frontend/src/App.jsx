@@ -109,27 +109,53 @@ export default function App() {
 
   // ================= ROOMS =================
   const fetchRooms = async () => {
-    const res = await fetch(`${API_URL}/rooms/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    setRooms(await res.json());
+    try {
+      const res = await fetch(`${API_URL}/rooms/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.detail || `Failed to fetch rooms (${res.status})`);
+      }
+
+      setRooms(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('fetchRooms failed:', err);
+    }
   };
 
-  const createRoom = async () => {
-    if (!newRoomName.trim()) return;
+  const createRoom = async (roomData = {}) => {
+    const roomName = (roomData?.name ?? newRoomName).trim();
+    const roomDescription = (roomData?.description ?? '').trim();
+    if (!roomName) return;
 
-    await fetch(`${API_URL}/rooms/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: newRoomName }),
-    });
+    try {
+      const res = await fetch(`${API_URL}/rooms/`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: roomName,
+          description: roomDescription,
+        }),
+      });
 
-    setNewRoomName('');
-    setShowCreateRoom(false);
-    fetchRooms();
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.detail || `Failed to create room (${res.status})`);
+      }
+
+      setNewRoomName('');
+      setShowCreateRoom(false);
+      await fetchRooms();
+      return true;
+    } catch (err) {
+      console.error('createRoom failed:', err);
+      return false;
+    }
   };
 
   const deleteRoom = async (roomId) => {
@@ -140,6 +166,47 @@ export default function App() {
 
     if (currentRoom?.id === roomId) leaveRoom();
     fetchRooms();
+  };
+
+  const addMemberToRoom = async (room) => {
+    if (!room?.id) return false;
+    if (room.created_by !== user?.username) return false;
+
+    const input = window.prompt('Enter username to add to this room:');
+    const usernameToAdd = input?.trim();
+    if (!usernameToAdd) return false;
+
+    try {
+      const res = await fetch(`${API_URL}/rooms/${room.id}/members`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: usernameToAdd }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.detail || `Failed to add member (${res.status})`);
+      }
+
+      await fetchRooms();
+
+      const roomRes = await fetch(`${API_URL}/rooms/${room.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (roomRes.ok) {
+        const updatedRoom = await roomRes.json();
+        setCurrentRoom(updatedRoom);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('addMemberToRoom failed:', err);
+      window.alert(err.message || 'Failed to add member');
+      return false;
+    }
   };
 
   // ================= WEBSOCKET =================
@@ -156,10 +223,19 @@ export default function App() {
     socket.onmessage = (event) => {
       const msg = JSON.parse(event.data);
 
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => {
+        const msgId = msg._id || msg.id;
+        if (msgId && prev.some((m) => (m._id || m.id) === msgId)) return prev;
+        return [...prev, msg];
+      });
 
       setMessagesByRoom((prev) => {
-        const roomMsgs = prev[room.id] ? [...prev[room.id], msg] : [msg];
+        const existing = prev[room.id] || [];
+        const msgId = msg._id || msg.id;
+        const roomMsgs =
+          msgId && existing.some((m) => (m._id || m.id) === msgId)
+            ? existing
+            : [...existing, msg];
         return { ...prev, [room.id]: roomMsgs };
       });
     };
@@ -175,11 +251,22 @@ export default function App() {
     setMessages([]);
   };
 
-  const sendMessage = () => {
-    if (!newMessage.trim() || !ws.current) return;
+  const sendMessage = (payload) => {
+    if (!ws.current) return;
 
-    ws.current.send(JSON.stringify({ content: newMessage }));
-    setNewMessage('');
+    const content =
+      typeof payload === 'string' ? payload : payload?.content;
+    const replyTo =
+      typeof payload === 'object' ? payload?.reply_to || null : null;
+
+    if (!content?.trim()) return;
+
+    ws.current.send(
+      JSON.stringify({
+        content: content.trim(),
+        reply_to: replyTo,
+      })
+    );
   };
 
   // ================= LOGOUT =================
@@ -251,12 +338,15 @@ export default function App() {
 
       <ChatWindow
         user={user}
+        token={token}
         room={currentRoom}
         messages={messages}
+        setMessages={setMessages}
         newMessage={newMessage}
         setNewMessage={setNewMessage}
         onSend={sendMessage}
         onLeave={leaveRoom}
+        onAddMember={addMemberToRoom}
       />
     </div>
   );

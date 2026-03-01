@@ -2,12 +2,13 @@
 Room management API endpoints
 Handles creation, retrieval, and deletion of chat rooms
 """
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from typing import List
 import uuid
-from ..models.schemas import Room, RoomCreate, User
+from ..models.schemas import Room, RoomCreate, RoomMemberAdd, User
 from ..repositories.room_repo import room_repository
 from ..repositories.message_repo import message_repository
+from ..core.database import mongodb
 from .auth import get_current_user
 
 router = APIRouter()
@@ -29,12 +30,14 @@ async def create_room(room: RoomCreate, current_user: User = Depends(get_current
     room_doc = await room_repository.create_room(
         room_id=room_id,
         name=room.name,
+        description=room.description or "",
         created_by=current_user.username
     )
     
     return Room(
         id=room_doc["id"],
         name=room_doc["name"],
+        description=room_doc.get("description", ""),
         created_at=room_doc["created_at"],
         created_by=room_doc["created_by"],
         members=room_doc.get("members", [])
@@ -58,6 +61,7 @@ async def get_rooms(current_user: User = Depends(get_current_user)):
         Room(
             id=room["id"],
             name=room["name"],
+            description=room.get("description", ""),
             created_at=room["created_at"],
             created_by=room["created_by"],
             members=room.get("members", [])
@@ -92,6 +96,7 @@ async def get_room(room_id: str, current_user: User = Depends(get_current_user))
     return Room(
         id=room["id"],
         name=room["name"],
+        description=room.get("description", ""),
         created_at=room["created_at"],
         created_by=room["created_by"],
         members=room.get("members", [])
@@ -160,6 +165,53 @@ async def get_room_members(room_id: str, current_user: User = Depends(get_curren
     return room.get("members", [])
 
 
+@router.post("/{room_id}/members")
+async def add_room_member(
+    room_id: str,
+    payload: RoomMemberAdd,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Add a member to a room (only room creator can add members).
+    """
+    room = await room_repository.get_room_by_id(room_id)
+    if not room:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Room not found",
+        )
+
+    if room["created_by"] != current_user.username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only room creator can add members",
+        )
+
+    username = payload.username.strip()
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username is required",
+        )
+
+    users_collection = mongodb.get_collection("users")
+    user_doc = await users_collection.find_one({"username": username})
+    if not user_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    await room_repository.add_member(room_id, username)
+    updated_members = await room_repository.get_room_members(room_id)
+
+    return {
+        "room_id": room_id,
+        "added_username": username,
+        "members": updated_members,
+    }
+
+
 @router.get("/{room_id}/members/count")
 async def get_room_member_count(room_id: str, current_user: User = Depends(get_current_user)):
     """
@@ -191,3 +243,52 @@ async def get_room_member_count(room_id: str, current_user: User = Depends(get_c
         "member_count": len(members),
         "members": members
     }
+
+
+@router.get("/{room_id}/messages")
+async def get_room_messages(
+    room_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    before: str | None = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get paginated room messages (oldest -> newest).
+
+    Args:
+        room_id: Room identifier
+        limit: Maximum number of messages to return
+        before: Optional Mongo ObjectId cursor to fetch older messages
+        current_user: Current authenticated user
+    """
+    room = await room_repository.get_room_by_id(room_id)
+    if not room:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Room not found",
+        )
+
+    try:
+        messages = await message_repository.get_room_messages(
+            room_id=room_id,
+            limit=limit,
+            before=before,
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid pagination cursor",
+        )
+
+    return [
+        {
+            "_id": msg.get("_id"),
+            "room_id": msg.get("room_id"),
+            "username": msg.get("username"),
+            "content": msg.get("content"),
+            "type": msg.get("type", "message"),
+            "timestamp": msg.get("timestamp").isoformat() if msg.get("timestamp") else None,
+            "reply_to": msg.get("reply_to"),
+        }
+        for msg in messages
+    ]

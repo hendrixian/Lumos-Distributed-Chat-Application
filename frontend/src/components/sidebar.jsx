@@ -33,14 +33,15 @@ export default function Sidebar({
     if (file) handleRoomChange('avatar', file);
   };
 
-  const handleCreateRoomSubmit = () => {
+  const handleCreateRoomSubmit = async () => {
     if (!newRoomData.name.trim()) return;
 
-    // Existing logic call
-    onCreateRoom(newRoomData);
+    const created = await onCreateRoom(newRoomData);
 
     // Backend log for developer
     console.log('Room data submitted to backend:', newRoomData);
+
+    if (!created) return;
 
     // Reset form
     setNewRoomData({ name: '', description: '', avatar: null });

@@ -6,6 +6,7 @@ import { fetchRoomMessages } from '../api/api.jsx';
 
 export default function ChatWindow({
   user,
+  token,
   room,
   messages,
   setMessages,
@@ -13,6 +14,7 @@ export default function ChatWindow({
   setNewMessage,
   onSend,
   onLeave,
+  onAddMember,
 }) {
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -25,6 +27,7 @@ export default function ChatWindow({
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [replyTo, setReplyTo] = useState(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
 
   // Normalize messages once
   const normalizedMessages = useMemo(() => {
@@ -50,7 +53,7 @@ export default function ChatWindow({
 
     const fetchInitial = async () => {
       try {
-        const latest = await fetchRoomMessages(room.id, { limit: 50 });
+        const latest = await fetchRoomMessages(room.id, token, { limit: 50 });
         setMessages(latest);
         setHasMore(latest.length === 50);
         setTimeout(scrollToBottom, 100);
@@ -60,7 +63,7 @@ export default function ChatWindow({
     };
 
     fetchInitial();
-  }, [room?.id]);
+  }, [room?.id, token]);
 
   // Lazy load older messages
   const loadOlderMessages = async () => {
@@ -74,7 +77,7 @@ export default function ChatWindow({
     const prevScrollHeight = containerRef.current.scrollHeight;
 
     try {
-      const older = await fetchRoomMessages(room.id, {
+      const older = await fetchRoomMessages(room.id, token, {
         limit: 50,
         before: oldest._id,
       });
@@ -113,6 +116,18 @@ export default function ChatWindow({
   const handleReply = (msg) => {
     setReplyTo(msg);
     inputRef.current?.focus();
+  };
+
+  const handleJumpToMessage = (messageId) => {
+    if (!containerRef.current || !messageId) return;
+    const target = containerRef.current.querySelector(
+      `[data-message-id="${messageId}"]`
+    );
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedMessageId(messageId);
+    setTimeout(() => setHighlightedMessageId(null), 1400);
   };
 
   const handleSend = () => {
@@ -218,6 +233,8 @@ export default function ChatWindow({
               msg={msg}
               isOwn={msg.username === user.username}
               onReply={handleReply}
+              onJumpToMessage={handleJumpToMessage}
+              isHighlighted={highlightedMessageId === (msg._id || msg.id)}
               replyTo={
                 msg.reply_to
                   ? normalizedMessages.find(
@@ -287,7 +304,12 @@ export default function ChatWindow({
           showRightPanel ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        <GroupInfo group={room} onClose={() => setShowRightPanel(false)} />
+        <GroupInfo
+          group={room}
+          user={user}
+          onClose={() => setShowRightPanel(false)}
+          onAddMember={onAddMember}
+        />
       </div>
     </div>
   );

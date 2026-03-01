@@ -1,6 +1,13 @@
 import { Check, CheckCheck, CornerUpLeft } from 'lucide-react';
 
-export default function MessageBubble({ msg, isOwn, onReply, replyTo }) {
+export default function MessageBubble({
+  msg,
+  isOwn,
+  onReply,
+  replyTo,
+  onJumpToMessage,
+  isHighlighted,
+}) {
   const isSystem = msg.type === 'user_joined' || msg.type === 'user_left';
 
   if (isSystem) {
@@ -12,10 +19,12 @@ export default function MessageBubble({ msg, isOwn, onReply, replyTo }) {
   }
 
   const isSeen = msg.seen === true;
+  const messageId = msg._id || msg.id;
 
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
       <div
+        data-message-id={messageId}
         className={`
           inline-block
           max-w-[70%]
@@ -25,6 +34,8 @@ export default function MessageBubble({ msg, isOwn, onReply, replyTo }) {
           break-words
           whitespace-pre-wrap
           relative
+          transition-colors duration-700
+          ${isHighlighted ? 'ring-2 ring-yellow-300 bg-yellow-100 text-gray-900' : ''}
           ${isOwn
             ? 'bg-blue-600 text-white rounded-br-sm'
             : 'bg-gray-200 text-gray-900 rounded-bl-sm'}
@@ -33,8 +44,12 @@ export default function MessageBubble({ msg, isOwn, onReply, replyTo }) {
         {/* --- Replied message preview (Telegram style) --- */}
         {replyTo && (
           <div
+            onClick={() =>
+              replyTo?._id && onJumpToMessage?.(replyTo._id)
+            }
             className={`
               mb-2 px-3 py-2 rounded border-l-4
+              cursor-pointer
               ${
                 isOwn
                   ? 'bg-white/20 border-white text-white'

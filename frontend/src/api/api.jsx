@@ -6,7 +6,11 @@ const WS_URL = 'ws://localhost:8002';
 // =====================================================
 
 // Fetch paginated messages (lazy load ready)
-export async function fetchRoomMessages(roomId, { limit = 50, before = null } = {}) {
+export async function fetchRoomMessages(
+  roomId,
+  token,
+  { limit = 50, before = null } = {}
+) {
   if (!roomId) return [];
 
   let url = `${API_URL}/rooms/${roomId}/messages?limit=${limit}`;
@@ -14,7 +18,9 @@ export async function fetchRoomMessages(roomId, { limit = 50, before = null } = 
     url += `&before=${before}`;
   }
 
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   if (!res.ok) throw new Error('Failed to fetch messages');
 
   const data = await res.json();
