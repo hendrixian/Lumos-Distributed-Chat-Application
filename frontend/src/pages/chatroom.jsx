@@ -37,6 +37,17 @@ export default function ChatWindow({
     }));
   }, [messages]);
 
+  const visibleMessages = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return normalizedMessages;
+
+    return normalizedMessages.filter((msg) => {
+      const content = String(msg.content || '').toLowerCase();
+      const username = String(msg.username || '').toLowerCase();
+      return content.includes(query) || username.includes(query);
+    });
+  }, [normalizedMessages, searchText]);
+
   // Scroll to bottom helper
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -227,7 +238,13 @@ export default function ChatWindow({
             </div>
           )}
 
-          {normalizedMessages.map((msg) => (
+          {visibleMessages.length === 0 && searchText.trim() && (
+            <div className="text-center text-sm text-gray-400 py-6">
+              No messages found for "{searchText.trim()}"
+            </div>
+          )}
+
+          {visibleMessages.map((msg) => (
             <MessageBubble
               key={msg._id}
               msg={msg}
