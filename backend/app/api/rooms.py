@@ -2,13 +2,15 @@
 Room management API endpoints
 Handles creation, retrieval, and deletion of chat rooms
 """
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, status, Depends, Query, File, Form, UploadFile
 from typing import List
 import uuid
 from ..models.schemas import Room, RoomCreate, RoomMemberAdd, User
 from ..repositories.room_repo import room_repository
 from ..repositories.message_repo import message_repository
 from ..core.database import mongodb
+from ..core.image_utils import image_file_to_data_url
 from ..websocket.chat import manager as ws_manager
 from .auth import get_current_user
 
@@ -32,13 +34,14 @@ async def create_room(room: RoomCreate, current_user: User = Depends(get_current
         room_id=room_id,
         name=room.name,
         description=room.description or "",
-        created_by=current_user.username
+        created_by=current_user.username,
     )
     
     return Room(
         id=room_doc["id"],
         name=room_doc["name"],
         description=room_doc.get("description", ""),
+        avatar_url=room_doc.get("avatar_url", ""),
         created_at=room_doc["created_at"],
         created_by=room_doc["created_by"],
         members=room_doc.get("members", [])
@@ -72,6 +75,7 @@ async def get_rooms(current_user: User = Depends(get_current_user)):
                 id=room["id"],
                 name=room["name"],
                 description=room.get("description", ""),
+                avatar_url=room.get("avatar_url", ""),
                 created_at=room["created_at"],
                 created_by=room["created_by"],
                 type=room_type,
@@ -115,10 +119,68 @@ async def get_room(room_id: str, current_user: User = Depends(get_current_user))
         id=room["id"],
         name=room["name"],
         description=room.get("description", ""),
+        avatar_url=room.get("avatar_url", ""),
         created_at=room["created_at"],
         created_by=room["created_by"],
         type=room.get("type", "group"),
         members=room.get("members", [])
+    )
+
+
+@router.patch("/{room_id}", response_model=Room)
+async def update_room(
+    room_id: str,
+    description: str | None = Form(default=None),
+    avatar: UploadFile | None = File(default=None),
+    remove_avatar: bool = Form(default=False),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update group room metadata (creator/admin only).
+    """
+    room = await room_repository.get_room_by_id(room_id)
+    if not room:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Room not found",
+        )
+
+    if room.get("type") == "dm":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="DM rooms cannot be updated from this endpoint",
+        )
+
+    if room["created_by"] != current_user.username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only room creator can update room details",
+        )
+
+    update_fields = {"updated_at": datetime.utcnow()}
+    if description is not None:
+        update_fields["description"] = description.strip()
+    if remove_avatar:
+        update_fields["avatar_url"] = ""
+    if avatar is not None:
+        update_fields["avatar_url"] = await image_file_to_data_url(avatar)
+
+    rooms_collection = mongodb.get_collection("rooms")
+    await rooms_collection.update_one(
+        {"id": room_id},
+        {"$set": update_fields},
+    )
+    updated_room = await room_repository.get_room_by_id(room_id)
+
+    return Room(
+        id=updated_room["id"],
+        name=updated_room["name"],
+        description=updated_room.get("description", ""),
+        avatar_url=updated_room.get("avatar_url", ""),
+        created_at=updated_room["created_at"],
+        created_by=updated_room["created_by"],
+        type=updated_room.get("type", "group"),
+        members=updated_room.get("members", []),
     )
 
 

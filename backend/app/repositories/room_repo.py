@@ -24,6 +24,7 @@ class RoomRepository:
         name: str,
         created_by: str,
         description: str = "",
+        avatar_url: str = "",
     ) -> Dict:
         """
         Create a new chat room
@@ -40,6 +41,7 @@ class RoomRepository:
             "id": room_id,
             "name": name,
             "description": description or "",
+            "avatar_url": avatar_url or "",
             "created_by": created_by,
             "created_at": datetime.utcnow(),
             "members": []  # Initialize with empty members list

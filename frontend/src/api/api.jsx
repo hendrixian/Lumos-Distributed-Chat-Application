@@ -97,8 +97,8 @@ export function leaveRoom(ws) {
 // ================= USER PROFILE ======================
 // =====================================================
 
-export async function fetchUserProfile(token, userId) {
-  const res = await fetch(`${API_URL}/users/${userId}`, {
+export async function fetchUserProfile(token) {
+  const res = await fetch(`${API_URL}/users/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -112,16 +112,16 @@ export async function fetchUserProfile(token, userId) {
   };
 }
 
-export async function updateUserProfile(token, userId, data) {
+export async function updateUserProfile(token, data) {
   const formData = new FormData();
 
-  if (data.username) formData.append('username', data.username);
-  if (data.email) formData.append('email', data.email);
-  if (data.bio) formData.append('bio', data.bio);
-  if (data.status) formData.append('status', data.status);
-  if (data.avatar) formData.append('avatar', data.avatar);
+  if (Object.prototype.hasOwnProperty.call(data || {}, 'bio')) {
+    formData.append('bio', data.bio ?? '');
+  }
+  if (data?.avatar) formData.append('avatar', data.avatar);
+  if (data?.remove_avatar) formData.append('remove_avatar', 'true');
 
-  const res = await fetch(`${API_URL}/users/${userId}`, {
+  const res = await fetch(`${API_URL}/users/me`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}` },
     body: formData,

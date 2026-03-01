@@ -1,4 +1,4 @@
-import { X, UserPlus, LogOut } from 'lucide-react';
+import { X, UserPlus, LogOut, Edit2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 export default function GroupInfo({
@@ -8,10 +8,20 @@ export default function GroupInfo({
   onClose,
   onMessage,
   onAddMember,
+  onUpdateGroupProfile,
   onLeaveRoom,
 }) {
   const [selectedMemberUsername, setSelectedMemberUsername] = useState(null);
   const [searchText, setSearchText] = useState('');
+  const [editingGroupProfile, setEditingGroupProfile] = useState(false);
+  const [groupDescription, setGroupDescription] = useState(group?.description || '');
+  const [groupAvatarPreview, setGroupAvatarPreview] = useState(
+    group?.avatar_url || group?.avatar || ''
+  );
+  const [groupAvatarFile, setGroupAvatarFile] = useState(null);
+  const [removeGroupAvatar, setRemoveGroupAvatar] = useState(false);
+  const [savingGroupProfile, setSavingGroupProfile] = useState(false);
+  const [groupProfileError, setGroupProfileError] = useState('');
   const name = group?.name || '';
   const description = group?.description || '';
   const memberUsernames = group?.members || [];
@@ -32,6 +42,12 @@ export default function GroupInfo({
 
   useEffect(() => {
     setSelectedMemberUsername(null);
+    setEditingGroupProfile(false);
+    setGroupDescription(group?.description || '');
+    setGroupAvatarPreview(group?.avatar_url || group?.avatar || '');
+    setGroupAvatarFile(null);
+    setRemoveGroupAvatar(false);
+    setGroupProfileError('');
   }, [group?.id]);
 
   if (!group) return null;
@@ -44,6 +60,46 @@ export default function GroupInfo({
     m.username.toLowerCase().includes(searchText.toLowerCase())
   );
   const isOwner = group?.created_by === user?.username;
+  const canEditGroup = isOwner && group?.type !== 'dm';
+
+  const handleGroupAvatarChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setGroupAvatarFile(file);
+    setRemoveGroupAvatar(false);
+    const reader = new FileReader();
+    reader.onload = () => setGroupAvatarPreview(reader.result?.toString() || '');
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveGroupAvatar = () => {
+    setGroupAvatarFile(null);
+    setGroupAvatarPreview('');
+    setRemoveGroupAvatar(true);
+  };
+
+  const saveGroupProfile = async () => {
+    if (!canEditGroup || !group?.id) return;
+    setGroupProfileError('');
+    setSavingGroupProfile(true);
+
+    const saved = await onUpdateGroupProfile?.(group.id, {
+      description: groupDescription,
+      avatarFile: groupAvatarFile,
+      removeAvatar: removeGroupAvatar,
+    });
+
+    setSavingGroupProfile(false);
+    if (!saved) {
+      setGroupProfileError('Could not save group profile.');
+      return;
+    }
+
+    setEditingGroupProfile(false);
+    setGroupAvatarFile(null);
+    setRemoveGroupAvatar(false);
+  };
 
   return (
     <div className="fixed top-0 right-0 h-full w-80 bg-white shadow-xl z-50 flex flex-col">
@@ -84,14 +140,85 @@ export default function GroupInfo({
         <>
           {/* Group Profile */}
           <div className="flex flex-col items-center p-6 border-b">
-            <div className="w-24 h-24 rounded-full bg-gray-300 mb-3" />
+            <img
+              src={groupAvatarPreview || 'https://via.placeholder.com/96'}
+              alt={name}
+              className="w-24 h-24 rounded-full object-cover bg-gray-300 mb-3"
+            />
             <p className="text-lg font-semibold">{name}</p>
-            <p className="text-sm text-gray-500 mt-1 text-center px-2">
-              {description?.trim() || 'No description available.'}
-            </p>
+
+            {!editingGroupProfile ? (
+              <p className="text-sm text-gray-500 mt-1 text-center px-2">
+                {description?.trim() || 'No description available.'}
+              </p>
+            ) : (
+              <div className="w-full mt-2">
+                <textarea
+                  value={groupDescription}
+                  onChange={(e) => setGroupDescription(e.target.value)}
+                  className="w-full px-3 py-2 border rounded resize-none text-sm"
+                  rows={3}
+                  placeholder="Group description"
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleGroupAvatarChange}
+                  className="w-full text-sm mt-2"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemoveGroupAvatar}
+                  className="mt-2 text-xs text-red-600 hover:text-red-700"
+                >
+                  Remove group photo
+                </button>
+              </div>
+            )}
+
             <p className="text-sm text-gray-500">
               {totalMembers} members, {onlineMembers} online
             </p>
+
+            {groupProfileError && (
+              <p className="text-xs text-red-600 mt-2">{groupProfileError}</p>
+            )}
+
+            {canEditGroup && !editingGroupProfile && (
+              <button
+                onClick={() => setEditingGroupProfile(true)}
+                className="mt-3 inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Edit2 size={14} />
+                Edit Group
+              </button>
+            )}
+
+            {canEditGroup && editingGroupProfile && (
+              <div className="mt-3 w-full flex gap-2">
+                <button
+                  onClick={saveGroupProfile}
+                  disabled={savingGroupProfile}
+                  className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:bg-green-400"
+                >
+                  {savingGroupProfile ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingGroupProfile(false);
+                    setGroupDescription(group?.description || '');
+                    setGroupAvatarPreview(group?.avatar_url || group?.avatar || '');
+                    setGroupAvatarFile(null);
+                    setRemoveGroupAvatar(false);
+                    setGroupProfileError('');
+                  }}
+                  className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
             {onLeaveRoom && (
               <button
                 onClick={() => onLeaveRoom(group)}

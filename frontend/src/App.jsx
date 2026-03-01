@@ -147,7 +147,7 @@ export default function App() {
       });
       if (userRes.ok) {
         const userData = await userRes.json();
-        setUser({ username: userData.username, email: userData.email });
+        setUser(userData);
       } else {
         setUser({ username });
       }
@@ -167,9 +167,71 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || `Failed to fetch rooms (${res.status})`);
-      setRooms(Array.isArray(data) ? data : []);
+      const roomList = Array.isArray(data) ? data : [];
+      setRooms(roomList);
+      setCurrentRoom((prev) => {
+        if (!prev?.id) return prev;
+        return roomList.find((room) => room.id === prev.id) || prev;
+      });
     } catch (err) {
       console.error('fetchRooms failed:', err);
+    }
+  };
+
+  const updateUserProfile = async (payload = {}) => {
+    const hasBio = Object.prototype.hasOwnProperty.call(payload, 'bio');
+    const { bio, avatarFile, removeAvatar = false } = payload;
+
+    try {
+      const formData = new FormData();
+      if (hasBio) formData.append('bio', bio ?? '');
+      if (avatarFile) formData.append('avatar', avatarFile);
+      if (removeAvatar) formData.append('remove_avatar', 'true');
+
+      const res = await fetch(`${API_URL}/users/me`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `Failed to update profile (${res.status})`);
+
+      setUser(data);
+      return true;
+    } catch (err) {
+      console.error('updateUserProfile failed:', err);
+      window.alert(err.message || 'Failed to update profile');
+      return false;
+    }
+  };
+
+  const updateGroupProfile = async (roomId, payload = {}) => {
+    if (!roomId) return false;
+
+    const hasDescription = Object.prototype.hasOwnProperty.call(payload, 'description');
+    const { description, avatarFile, removeAvatar = false } = payload;
+
+    try {
+      const formData = new FormData();
+      if (hasDescription) formData.append('description', description ?? '');
+      if (avatarFile) formData.append('avatar', avatarFile);
+      if (removeAvatar) formData.append('remove_avatar', 'true');
+
+      const res = await fetch(`${API_URL}/rooms/${roomId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `Failed to update group (${res.status})`);
+
+      setRooms((prev) => prev.map((room) => (room.id === roomId ? data : room)));
+      setCurrentRoom((prev) => (prev?.id === roomId ? data : prev));
+      return true;
+    } catch (err) {
+      console.error('updateGroupProfile failed:', err);
+      window.alert(err.message || 'Failed to update group');
+      return false;
     }
   };
 
@@ -344,6 +406,7 @@ export default function App() {
         onDeleteRoom={deleteRoom}
         onJoinRoom={joinRoom}
         onLogout={logout}
+        onUpdateUserProfile={updateUserProfile}
         onOpenRequestsPage={() => setShowRequestsPage(true)}
         notificationBadgeCount={notificationBadgeCount}
         onRefreshBadge={refreshNotificationBadge}
@@ -370,6 +433,7 @@ export default function App() {
             onSend={sendMessage}
             onLeave={leaveRoom}
             onAddMember={addMemberToRoom}
+            onUpdateGroupProfile={updateGroupProfile}
           />
         )}
       </div>

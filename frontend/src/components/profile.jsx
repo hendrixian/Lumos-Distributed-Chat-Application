@@ -1,5 +1,5 @@
 import { Bell, Edit2, LogOut, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function UserProfile({
   user,
@@ -7,16 +7,61 @@ export default function UserProfile({
   onLogout,
   onOpenRequests,
   notificationBadgeCount,
+  onUpdateProfile,
 }) {
   const [editing, setEditing] = useState(false);
-  const [username, setUsername] = useState(user.username);
-  const [email, setEmail] = useState(user.email || '');
   const [bio, setBio] = useState(user.bio || '');
-  const [status, setStatus] = useState(user.status || 'Online');
+  const [avatarPreview, setAvatarPreview] = useState(user.avatar_url || '');
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSave = () => {
+  useEffect(() => {
+    setBio(user.bio || '');
+    setAvatarPreview(user.avatar_url || '');
+    setAvatarFile(null);
+    setRemoveAvatar(false);
     setEditing(false);
-    console.log('Saved', { username, email, bio, status });
+    setError('');
+  }, [user]);
+
+  const handleAvatarChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setAvatarFile(file);
+    setRemoveAvatar(false);
+    const reader = new FileReader();
+    reader.onload = () => setAvatarPreview(reader.result?.toString() || '');
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarFile(null);
+    setAvatarPreview('');
+    setRemoveAvatar(true);
+  };
+
+  const handleSave = async () => {
+    setError('');
+    setIsSaving(true);
+
+    const saved = await onUpdateProfile?.({
+      bio,
+      avatarFile,
+      removeAvatar,
+    });
+
+    setIsSaving(false);
+    if (!saved) {
+      setError('Could not save profile changes.');
+      return;
+    }
+
+    setEditing(false);
+    setAvatarFile(null);
+    setRemoveAvatar(false);
   };
 
   return (
@@ -33,39 +78,45 @@ export default function UserProfile({
 
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="flex flex-col items-center mb-6">
-            <div className="w-24 h-24 rounded-full bg-gray-300 mb-2" />
+            <img
+              src={avatarPreview || 'https://via.placeholder.com/96'}
+              alt={user.username}
+              className="w-24 h-24 rounded-full object-cover mb-2 bg-gray-300"
+            />
+            <p className="font-medium text-lg">{user.username}</p>
+            <p className="text-sm text-gray-500">{user.email || 'No email set'}</p>
+
             {!editing ? (
-              <>
-                <p className="font-medium text-lg">{username}</p>
-                <p className="text-sm text-gray-500">{email || 'No email set'}</p>
-                <p className="text-sm text-gray-500 italic">{status}</p>
-              </>
+              <p className="mt-2 text-sm text-gray-600 text-center">
+                {bio?.trim() || 'No bio yet.'}
+              </p>
             ) : (
-              <div className="flex flex-col gap-3 w-full">
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-3 py-2 border rounded"
-                  placeholder="Username"
-                />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 border rounded"
-                  placeholder="Email"
-                />
-                <input
-                  type="text"
+              <div className="mt-3 flex flex-col gap-2 w-full">
+                <textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  className="w-full px-3 py-2 border rounded"
-                  placeholder="Bio"
+                  className="w-full px-3 py-2 border rounded resize-none"
+                  rows={3}
+                  placeholder="Write your bio..."
                 />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="w-full text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemoveAvatar}
+                  className="self-start text-xs text-red-600 hover:text-red-700"
+                >
+                  Remove profile photo
+                </button>
               </div>
             )}
           </div>
+
+          {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
 
           <div className="flex flex-col gap-3">
             {!editing ? (
@@ -78,9 +129,10 @@ export default function UserProfile({
             ) : (
               <button
                 onClick={handleSave}
-                className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
+                disabled={isSaving}
+                className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:bg-green-400"
               >
-                Save
+                {isSaving ? 'Saving...' : 'Save'}
               </button>
             )}
 

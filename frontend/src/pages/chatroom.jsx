@@ -15,6 +15,7 @@ export default function ChatWindow({
   onSend,
   onLeave,
   onAddMember,
+  onUpdateGroupProfile,
 }) {
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -366,6 +367,7 @@ export default function ChatWindow({
           onlineUsernames={presence.online_members}
           onClose={() => setShowRightPanel(false)}
           onAddMember={onAddMember}
+          onUpdateGroupProfile={onUpdateGroupProfile}
           onLeaveRoom={onLeave}
         />
       </div>

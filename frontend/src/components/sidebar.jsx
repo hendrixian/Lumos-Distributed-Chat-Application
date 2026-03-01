@@ -16,6 +16,7 @@ export default function Sidebar({
   onDeleteRoom,
   onJoinRoom,
   onLogout,
+  onUpdateUserProfile,
   onOpenRequestsPage,
   notificationBadgeCount,
   onRefreshBadge,
@@ -197,7 +198,7 @@ export default function Sidebar({
                 <div className="flex justify-between gap-2 items-start">
                   <div className="flex items-center gap-3 min-w-0">
                     <img
-                      src={room.avatar || 'https://via.placeholder.com/40'}
+                      src={room.avatar_url || room.avatar || 'https://via.placeholder.com/40'}
                       alt={room.name}
                       className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                     />
@@ -237,6 +238,7 @@ export default function Sidebar({
         <UserProfile
           user={user}
           notificationBadgeCount={notificationBadgeCount}
+          onUpdateProfile={onUpdateUserProfile}
           onOpenRequests={() => {
             setShowProfile(false);
             onOpenRequestsPage();

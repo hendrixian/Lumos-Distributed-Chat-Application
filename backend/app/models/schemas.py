@@ -9,7 +9,9 @@ class UserCreate(BaseModel):
 
 class User(BaseModel):
     username: str
-    email: Optional[str] = "" 
+    email: Optional[str] = ""
+    bio: Optional[str] = ""
+    avatar_url: Optional[str] = ""
 
 class Token(BaseModel):
     access_token: str
@@ -29,6 +31,7 @@ class Room(BaseModel):
     id: str
     name: str
     description: Optional[str] = ""
+    avatar_url: Optional[str] = ""
     created_at: datetime
     created_by: str
     type: str = "group"

@@ -116,7 +116,12 @@ async def get_user_from_token(token: str, credentials_exception: Optional[HTTPEx
     if user is None:
         raise credentials_exception
 
-    return User(username=user["username"], email=user.get("email"))
+    return User(
+        username=user["username"],
+        email=user.get("email"),
+        bio=user.get("bio", ""),
+        avatar_url=user.get("avatar_url", ""),
+    )
 
 
 async def user_exists(username: str, email: str = None) -> bool:
@@ -158,6 +163,8 @@ async def create_user(username: str, email: str, hashed_password: str):
     user_document = {
         "username": username,
         "email": email,
+        "bio": "",
+        "avatar_url": "",
         "hashed_password": hashed_password,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
@@ -243,4 +250,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 async def read_users_me(current_user: User = Depends(get_current_user)):
     #Get current user information
     db_user = await get_user_by_username(current_user.username)
-    return User(username=db_user["username"], email=db_user.get("email", ""))
+    return User(
+        username=db_user["username"],
+        email=db_user.get("email", ""),
+        bio=db_user.get("bio", ""),
+        avatar_url=db_user.get("avatar_url", ""),
+    )
