@@ -1,27 +1,40 @@
-import { X, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { X, UserPlus, LogOut } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
-export default function GroupInfo({ group, user, onClose, onMessage, onAddMember }) {
-  const [selectedMember, setSelectedMember] = useState(null);
+export default function GroupInfo({
+  group,
+  user,
+  onlineUsernames = [],
+  onClose,
+  onMessage,
+  onAddMember,
+  onLeaveRoom,
+}) {
+  const [selectedMemberUsername, setSelectedMemberUsername] = useState(null);
   const [searchText, setSearchText] = useState('');
+  const name = group?.name || '';
+  const description = group?.description || '';
+  const memberUsernames = group?.members || [];
+  const images = group?.images;
+  const files = group?.files;
+  const links = group?.links;
 
-  if (!group) return null;
-
-  const {
-    name,
-    description,
-    members: memberUsernames = [],
-    images,
-    files,
-    links,
-  } = group;
+  const onlineSet = useMemo(() => new Set(onlineUsernames), [onlineUsernames]);
 
   // Map usernames to objects (extend if more info is available)
   const members = memberUsernames.map((username) => ({
     username,
     avatar: null,
-    online: false,
+    online: onlineSet.has(username),
+    isAdmin: username === group?.created_by,
   }));
+  const selectedMember = members.find((m) => m.username === selectedMemberUsername) || null;
+
+  useEffect(() => {
+    setSelectedMemberUsername(null);
+  }, [group?.id]);
+
+  if (!group) return null;
 
   const totalMembers = members.length;
   const onlineMembers = members.filter((m) => m.online).length;
@@ -38,7 +51,7 @@ export default function GroupInfo({ group, user, onClose, onMessage, onAddMember
       <div className="flex items-center justify-between p-4 border-b">
         <h2 className="text-xl font-bold">{selectedMember ? 'Profile' : 'Group Info'}</h2>
         <button
-          onClick={selectedMember ? () => setSelectedMember(null) : onClose}
+          onClick={selectedMember ? () => setSelectedMemberUsername(null) : onClose}
           className="text-gray-600 hover:text-gray-800"
         >
           <X size={20} />
@@ -50,6 +63,11 @@ export default function GroupInfo({ group, user, onClose, onMessage, onAddMember
         <div className="flex flex-col items-center p-6">
           <div className="w-24 h-24 rounded-full bg-gray-300 mb-3" />
           <p className="text-lg font-semibold">{selectedMember.username}</p>
+          {selectedMember.isAdmin && (
+            <span className="mt-1 inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-xs font-semibold">
+              Admin
+            </span>
+          )}
           <p className="text-sm text-gray-500">
             Status: {selectedMember.online ? 'Online' : 'Offline'}
           </p>
@@ -74,6 +92,15 @@ export default function GroupInfo({ group, user, onClose, onMessage, onAddMember
             <p className="text-sm text-gray-500">
               {totalMembers} members, {onlineMembers} online
             </p>
+            {onLeaveRoom && (
+              <button
+                onClick={() => onLeaveRoom(group)}
+                className="mt-4 w-full inline-flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <LogOut size={16} />
+                Leave Room
+              </button>
+            )}
           </div>
 
           {/* Media / Files / Links */}
@@ -121,7 +148,7 @@ export default function GroupInfo({ group, user, onClose, onMessage, onAddMember
                 <div
                   key={member.username}
                   className="flex items-center gap-3 cursor-pointer hover:bg-gray-100 rounded-md p-1"
-                  onClick={() => setSelectedMember(member)}
+                  onClick={() => setSelectedMemberUsername(member.username)}
                 >
                   <div className="relative">
                     <img
@@ -134,7 +161,14 @@ export default function GroupInfo({ group, user, onClose, onMessage, onAddMember
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{member.username}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{member.username}</p>
+                      {member.isAdmin && (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[11px] font-semibold">
+                          Admin
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

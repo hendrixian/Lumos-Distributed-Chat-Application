@@ -92,13 +92,13 @@ class RoomRepository:
             username: Username to add
             
         Returns:
-            True if added, False otherwise
+            True if member was newly added, False otherwise
         """
         result = await self.collection.update_one(
             {"id": room_id},
             {"$addToSet": {"members": username}}  # $addToSet prevents duplicates
         )
-        return result.modified_count > 0 or result.matched_count > 0
+        return result.modified_count > 0
     
     async def remove_member(self, room_id: str, username: str) -> bool:
         """

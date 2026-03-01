@@ -37,6 +37,19 @@ export async function fetchRoomMessages(
   }));
 }
 
+export async function fetchRoomPresence(roomId, token) {
+  if (!roomId) {
+    return { online_count: 0, online_members: [] };
+  }
+
+  const res = await fetch(`${API_URL}/rooms/${roomId}/presence`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Failed to fetch room presence');
+
+  return res.json();
+}
+
 
 // =====================================================
 // ===================== WEBSOCKET =====================

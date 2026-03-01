@@ -32,9 +32,25 @@ export default function App() {
   const ws = useRef(null);
   const notificationWs = useRef(null);
 
+  const closeChatSocket = (reason = 'silent_disconnect') => {
+    if (!ws.current) return;
+
+    ws.current.onmessage = null;
+    ws.current.onerror = null;
+
+    if (
+      ws.current.readyState === WebSocket.OPEN ||
+      ws.current.readyState === WebSocket.CONNECTING
+    ) {
+      ws.current.close(1000, reason);
+    }
+
+    ws.current = null;
+  };
+
   useEffect(() => {
     return () => {
-      if (ws.current) ws.current.close();
+      closeChatSocket('app_unmount');
       if (notificationWs.current) notificationWs.current.close();
     };
   }, []);
@@ -228,8 +244,23 @@ export default function App() {
   };
 
   const joinRoom = (room) => {
+    if (!room?.id || !user?.username) return;
     setShowRequestsPage(false);
-    if (ws.current) ws.current.close();
+
+    const isSameRoom = currentRoom?.id === room.id;
+    const canReuseSocket =
+      isSameRoom &&
+      ws.current &&
+      (ws.current.readyState === WebSocket.OPEN ||
+        ws.current.readyState === WebSocket.CONNECTING);
+
+    if (canReuseSocket) {
+      setCurrentRoom(room);
+      setMessages(messagesByRoom[room.id] || []);
+      return;
+    }
+
+    closeChatSocket(isSameRoom ? 'reconnect_room' : 'switch_room');
     setCurrentRoom(room);
     setMessages(messagesByRoom[room.id] || []);
 
@@ -247,8 +278,7 @@ export default function App() {
   };
 
   const leaveRoom = () => {
-    if (ws.current) ws.current.close(1000, 'User left room');
-    ws.current = null;
+    closeChatSocket('explicit_leave');
     setCurrentRoom(null);
     setMessages([]);
   };
@@ -262,12 +292,7 @@ export default function App() {
   };
 
   const logout = () => {
-    if (ws.current) {
-      ws.current.onmessage = null;
-      ws.current.onerror = null;
-      ws.current.close();
-      ws.current = null;
-    }
+    closeChatSocket('logout');
     if (notificationWs.current) {
       notificationWs.current.close();
       notificationWs.current = null;

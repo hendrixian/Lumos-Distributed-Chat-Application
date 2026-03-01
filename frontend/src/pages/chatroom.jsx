@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import { Send, Users, ArrowDown, Search, PanelRight, X } from 'lucide-react';
 import MessageBubble from '../components/chatbubble.jsx';
 import GroupInfo from '../components/groupprofile.jsx';
-import { fetchRoomMessages } from '../api/api.jsx';
+import { fetchRoomMessages, fetchRoomPresence } from '../api/api.jsx';
 
 export default function ChatWindow({
   user,
@@ -28,6 +28,10 @@ export default function ChatWindow({
   const [searchText, setSearchText] = useState('');
   const [replyTo, setReplyTo] = useState(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const [presence, setPresence] = useState({
+    online_count: 0,
+    online_members: [],
+  });
 
   // Normalize messages once
   const normalizedMessages = useMemo(() => {
@@ -74,6 +78,39 @@ export default function ChatWindow({
     };
 
     fetchInitial();
+  }, [room?.id, token]);
+
+  useEffect(() => {
+    if (!room?.id || !token) {
+      setPresence({ online_count: 0, online_members: [] });
+      return;
+    }
+
+    let isMounted = true;
+
+    const refreshPresence = async () => {
+      try {
+        const data = await fetchRoomPresence(room.id, token);
+        if (isMounted) {
+          setPresence({
+            online_count: data?.online_count ?? 0,
+            online_members: Array.isArray(data?.online_members)
+              ? data.online_members
+              : [],
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch room presence:', err);
+      }
+    };
+
+    refreshPresence();
+    const timer = setInterval(refreshPresence, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
   }, [room?.id, token]);
 
   // Lazy load older messages
@@ -165,6 +202,7 @@ export default function ChatWindow({
   }
 
   const memberCount = room.members?.length ?? 0;
+  const onlineCount = presence.online_count ?? 0;
 
   return (
     <div className="flex-1 flex relative overflow-hidden">
@@ -202,7 +240,8 @@ export default function ChatWindow({
                   {room.name}
                 </h2>
                 <span className="text-xs text-gray-500">
-                  {memberCount} member{memberCount !== 1 ? 's' : ''}
+                  {memberCount} member{memberCount !== 1 ? 's' : ''},{' '}
+                  {onlineCount} online
                 </span>
               </>
             )}
@@ -324,8 +363,10 @@ export default function ChatWindow({
         <GroupInfo
           group={room}
           user={user}
+          onlineUsernames={presence.online_members}
           onClose={() => setShowRightPanel(false)}
           onAddMember={onAddMember}
+          onLeaveRoom={onLeave}
         />
       </div>
     </div>

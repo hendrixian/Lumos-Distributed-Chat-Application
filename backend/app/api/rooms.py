@@ -9,6 +9,7 @@ from ..models.schemas import Room, RoomCreate, RoomMemberAdd, User
 from ..repositories.room_repo import room_repository
 from ..repositories.message_repo import message_repository
 from ..core.database import mongodb
+from ..websocket.chat import manager as ws_manager
 from .auth import get_current_user
 
 router = APIRouter()
@@ -278,6 +279,38 @@ async def get_room_member_count(room_id: str, current_user: User = Depends(get_c
         "room_name": room["name"],
         "member_count": len(members),
         "members": members
+    }
+
+
+@router.get("/{room_id}/presence")
+async def get_room_presence(room_id: str, current_user: User = Depends(get_current_user)):
+    """
+    Get current online members for a room.
+    """
+    room = await room_repository.get_room_by_id(room_id)
+    if not room:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Room not found",
+        )
+
+    if room.get("type") == "dm" and current_user.username not in room.get("participants", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this DM room",
+        )
+
+    room_members = set(room.get("members", []))
+    online_members = [
+        username
+        for username in ws_manager.get_online_members(room_id)
+        if username in room_members
+    ]
+
+    return {
+        "room_id": room_id,
+        "online_count": len(online_members),
+        "online_members": online_members,
     }
 
 
