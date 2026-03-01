@@ -16,6 +16,8 @@ export default function App() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [error, setError] = useState('');
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [authLoadingText, setAuthLoadingText] = useState('');
 
   const [rooms, setRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(null);
@@ -80,12 +82,6 @@ export default function App() {
 
   useEffect(() => {
     if (!token) return;
-    fetchRooms();
-    refreshNotificationBadge();
-  }, [token]);
-
-  useEffect(() => {
-    if (!token) return;
     refreshNotificationBadge();
   }, [contactEventVersion]);
 
@@ -110,10 +106,13 @@ export default function App() {
 
   const handleAuth = async (e) => {
     e.preventDefault();
+    if (isAuthLoading) return;
     setError('');
+    setIsAuthLoading(true);
 
     try {
       if (!isLogin) {
+        setAuthLoadingText('Creating account...');
         const registerRes = await fetch(`${API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -125,6 +124,7 @@ export default function App() {
         }
       }
 
+      setAuthLoadingText('Signing you in...');
       const formData = new FormData();
       formData.append('username', username);
       formData.append('password', password);
@@ -140,30 +140,44 @@ export default function App() {
 
       const data = await loginRes.json();
       setToken(data.access_token);
-      await refreshNotificationBadge(data.access_token);
-
-      const userRes = await fetch(`${API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      });
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        setUser(userData);
-      } else {
-        setUser({ username });
-      }
+      setUser({ username, email: '', bio: '', avatar_url: '' });
 
       setPassword('');
       setEmail('');
       setConfirmPassword('');
+
+      // Run post-login hydration in background so UI does not freeze.
+      setAuthLoadingText('Loading your chats...');
+      void fetchRooms(data.access_token);
+      void refreshNotificationBadge(data.access_token);
+      void (async () => {
+        try {
+          const userRes = await fetch(`${API_URL}/auth/me`, {
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          });
+          if (userRes.ok) {
+            const userData = await userRes.json();
+            setUser(userData);
+          }
+        } catch (userErr) {
+          console.error('auth/me failed:', userErr);
+        }
+      })();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setIsAuthLoading(false);
+      setAuthLoadingText('');
     }
   };
 
-  const fetchRooms = async () => {
+  const fetchRooms = async (overrideToken) => {
+    const activeToken = overrideToken || token;
+    if (!activeToken) return;
+
     try {
       const res = await fetch(`${API_URL}/rooms/`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${activeToken}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || `Failed to fetch rooms (${res.status})`);
@@ -388,6 +402,8 @@ export default function App() {
         setConfirmPassword={setConfirmPassword}
         setIsLogin={setIsLogin}
         onSubmit={handleAuth}
+        isLoading={isAuthLoading}
+        loadingText={authLoadingText}
       />
     );
   }

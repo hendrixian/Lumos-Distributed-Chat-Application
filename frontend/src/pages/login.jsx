@@ -12,11 +12,13 @@ export default function LoginForm({
   setPassword,
   setConfirmPassword,
   setIsLogin,
-  onSubmit
+  onSubmit,
+  isLoading = false,
+  loadingText = '',
 }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
+      <div className={`bg-white rounded-lg shadow-2xl p-8 w-full max-w-md transition-all ${isLoading ? 'scale-[0.995]' : 'scale-100'}`}>
         <h1 className="text-3xl font-bold text-center mb-6 text-gray-800">
           {isLogin ? 'Login' : 'Register'}
         </h1>
@@ -35,6 +37,7 @@ export default function LoginForm({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSubmit(e)}
+            disabled={isLoading}
           />
 
           {/* Email (Register only) */}
@@ -45,6 +48,7 @@ export default function LoginForm({
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={isLoading}
             />
           )}
 
@@ -56,6 +60,7 @@ export default function LoginForm({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSubmit(e)}
+            disabled={isLoading}
           />
 
           {/* Confirm Password (Register only) */}
@@ -66,20 +71,41 @@ export default function LoginForm({
               placeholder="Confirm Password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={isLoading}
             />
           )}
 
           <button
             onClick={onSubmit}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition"
+            disabled={isLoading}
+            className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:bg-blue-400 disabled:cursor-not-allowed"
           >
-            {isLogin ? 'Login' : 'Register'}
+            {isLoading ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                {loadingText || (isLogin ? 'Signing in...' : 'Creating account...')}
+              </span>
+            ) : (
+              isLogin ? 'Login' : 'Register'
+            )}
           </button>
         </div>
 
+        {isLoading && (
+          <div className="mt-3 flex items-center justify-center gap-2 text-sm text-blue-700">
+            <span className="inline-flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-700 animate-bounce [animation-delay:-0.2s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-700 animate-bounce [animation-delay:-0.1s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-700 animate-bounce" />
+            </span>
+            <span>{loadingText || 'Please wait...'}</span>
+          </div>
+        )}
+
         <button
+          disabled={isLoading}
           onClick={() => setIsLogin(!isLogin)}
-          className="w-full mt-4 text-blue-600 text-sm"
+          className="w-full mt-4 text-blue-600 text-sm disabled:text-blue-300 disabled:cursor-not-allowed"
         >
           {isLogin
             ? "Don't have an account? Register"
