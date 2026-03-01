@@ -1,50 +1,97 @@
-import React, { useState, useEffect, useRef } from 'react';
-import LoginForm from './pages/login.jsx';
+import React, { useEffect, useRef, useState } from 'react';
+import AddContact from './components/AddContact.jsx';
 import Sidebar from './components/sidebar';
 import ChatWindow from './pages/chatroom.jsx';
+import LoginForm from './pages/login.jsx';
 
 const API_URL = 'http://localhost:8002';
 const WS_URL = 'ws://localhost:8002';
 
 export default function App() {
-  // ---------- AUTH ----------
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');  
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');  
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [error, setError] = useState('');
 
-  // ---------- ROOMS ----------
   const [rooms, setRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(null);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
 
-  // ---------- CHAT ----------
   const [messages, setMessages] = useState([]);
   const [messagesByRoom, setMessagesByRoom] = useState({});
   const [newMessage, setNewMessage] = useState('');
+
+  const [showRequestsPage, setShowRequestsPage] = useState(false);
+  const [contactEventVersion, setContactEventVersion] = useState(0);
+  const [notificationBadgeCount, setNotificationBadgeCount] = useState(0);
+
   const ws = useRef(null);
+  const notificationWs = useRef(null);
 
-  // ---------- PROFILE ----------
-  const [showProfile, setShowProfile] = useState(false);
-
-  // ---------- CLEANUP ----------
   useEffect(() => {
     return () => {
       if (ws.current) ws.current.close();
+      if (notificationWs.current) notificationWs.current.close();
     };
   }, []);
 
-  // ---------- LOAD ROOMS ----------
+  const refreshNotificationBadge = async (overrideToken) => {
+    const activeToken = overrideToken || token;
+    if (!activeToken) return;
+
+    try {
+      const headers = { Authorization: `Bearer ${activeToken}` };
+      const [notificationsRes, requestsRes] = await Promise.all([
+        fetch(`${API_URL}/contacts/notifications`, { headers }),
+        fetch(`${API_URL}/contacts/requests`, { headers }),
+      ]);
+      if (!notificationsRes.ok || !requestsRes.ok) return;
+
+      const [notifications, requests] = await Promise.all([
+        notificationsRes.json(),
+        requestsRes.json(),
+      ]);
+      const unreadCount = notifications.filter((n) => !n.read).length;
+      setNotificationBadgeCount(unreadCount + requests.length);
+    } catch (err) {
+      console.error('Failed to refresh notification badge', err);
+    }
+  };
+
   useEffect(() => {
-    if (token) fetchRooms();
+    if (!token) return;
+    fetchRooms();
+    refreshNotificationBadge();
   }, [token]);
 
-  // ================= AUTH =================
+  useEffect(() => {
+    if (!token) return;
+    refreshNotificationBadge();
+  }, [contactEventVersion]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    notificationWs.current = new WebSocket(`${WS_URL}/ws/notifications?token=${token}`);
+    notificationWs.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setContactEventVersion((prev) => prev + 1);
+      if (data.type === 'contact_accepted') fetchRooms();
+    };
+    notificationWs.current.onerror = console.error;
+
+    return () => {
+      if (notificationWs.current) {
+        notificationWs.current.close();
+        notificationWs.current = null;
+      }
+    };
+  }, [token]);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setError('');
@@ -54,13 +101,8 @@ export default function App() {
         const registerRes = await fetch(`${API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            username, 
-            email,  
-            password 
-          }),
+          body: JSON.stringify({ username, email, password }),
         });
-
         if (!registerRes.ok) {
           const data = await registerRes.json();
           throw new Error(data.detail || 'Registration failed');
@@ -75,7 +117,6 @@ export default function App() {
         method: 'POST',
         body: formData,
       });
-
       if (!loginRes.ok) {
         const data = await loginRes.json();
         throw new Error(data.detail || 'Login failed');
@@ -83,42 +124,33 @@ export default function App() {
 
       const data = await loginRes.json();
       setToken(data.access_token);
+      await refreshNotificationBadge(data.access_token);
 
       const userRes = await fetch(`${API_URL}/auth/me`, {
-      headers: { 'Authorization': `Bearer ${data.access_token}` }
-    });
-    
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
       if (userRes.ok) {
         const userData = await userRes.json();
-        setUser({ 
-          username: userData.username, 
-          email: userData.email  // ✅ Now includes email!
-        });
+        setUser({ username: userData.username, email: userData.email });
       } else {
-        // Fallback if /auth/me fails
         setUser({ username });
       }
 
       setPassword('');
-      setEmail('');  
-      setConfirmPassword('');  
+      setEmail('');
+      setConfirmPassword('');
     } catch (err) {
       setError(err.message);
     }
   };
 
-  // ================= ROOMS =================
   const fetchRooms = async () => {
     try {
       const res = await fetch(`${API_URL}/rooms/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.detail || `Failed to fetch rooms (${res.status})`);
-      }
-
+      if (!res.ok) throw new Error(data?.detail || `Failed to fetch rooms (${res.status})`);
       setRooms(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('fetchRooms failed:', err);
@@ -126,9 +158,9 @@ export default function App() {
   };
 
   const createRoom = async (roomData = {}) => {
-    const roomName = (roomData?.name ?? newRoomName).trim();
+    const roomName = (roomData?.name ?? '').trim();
     const roomDescription = (roomData?.description ?? '').trim();
-    if (!roomName) return;
+    if (!roomName) return false;
 
     try {
       const res = await fetch(`${API_URL}/rooms/`, {
@@ -137,18 +169,11 @@ export default function App() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: roomName,
-          description: roomDescription,
-        }),
+        body: JSON.stringify({ name: roomName, description: roomDescription }),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.detail || `Failed to create room (${res.status})`);
-      }
+      if (!res.ok) throw new Error(data?.detail || `Failed to create room (${res.status})`);
 
-      setNewRoomName('');
       setShowCreateRoom(false);
       await fetchRooms();
       return true;
@@ -159,19 +184,25 @@ export default function App() {
   };
 
   const deleteRoom = async (roomId) => {
-    await fetch(`${API_URL}/rooms/${roomId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (currentRoom?.id === roomId) leaveRoom();
-    fetchRooms();
+    try {
+      const res = await fetch(`${API_URL}/rooms/${roomId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data?.detail || 'Failed to delete room');
+      }
+      if (currentRoom?.id === roomId) leaveRoom();
+      await fetchRooms();
+    } catch (err) {
+      console.error('deleteRoom failed:', err);
+      window.alert(err.message || 'Failed to delete room');
+    }
   };
 
   const addMemberToRoom = async (room) => {
-    if (!room?.id) return false;
-    if (room.created_by !== user?.username) return false;
-
+    if (!room?.id || room.created_by !== user?.username) return false;
     const input = window.prompt('Enter username to add to this room:');
     const usernameToAdd = input?.trim();
     if (!usernameToAdd) return false;
@@ -185,22 +216,9 @@ export default function App() {
         },
         body: JSON.stringify({ username: usernameToAdd }),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.detail || `Failed to add member (${res.status})`);
-      }
-
+      if (!res.ok) throw new Error(data?.detail || `Failed to add member (${res.status})`);
       await fetchRooms();
-
-      const roomRes = await fetch(`${API_URL}/rooms/${room.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (roomRes.ok) {
-        const updatedRoom = await roomRes.json();
-        setCurrentRoom(updatedRoom);
-      }
-
       return true;
     } catch (err) {
       console.error('addMemberToRoom failed:', err);
@@ -209,43 +227,27 @@ export default function App() {
     }
   };
 
-  // ================= WEBSOCKET =================
   const joinRoom = (room) => {
+    setShowRequestsPage(false);
     if (ws.current) ws.current.close();
-
     setCurrentRoom(room);
-
-    const roomMessages = messagesByRoom[room.id] || [];
-    setMessages(roomMessages);
+    setMessages(messagesByRoom[room.id] || []);
 
     const socket = new WebSocket(`${WS_URL}/ws/${room.id}/${user.username}`);
-
     socket.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-
-      setMessages((prev) => {
-        const msgId = msg._id || msg.id;
-        if (msgId && prev.some((m) => (m._id || m.id) === msgId)) return prev;
-        return [...prev, msg];
-      });
-
+      setMessages((prev) => [...prev, msg]);
       setMessagesByRoom((prev) => {
-        const existing = prev[room.id] || [];
-        const msgId = msg._id || msg.id;
-        const roomMsgs =
-          msgId && existing.some((m) => (m._id || m.id) === msgId)
-            ? existing
-            : [...existing, msg];
+        const roomMsgs = prev[room.id] ? [...prev[room.id], msg] : [msg];
         return { ...prev, [room.id]: roomMsgs };
       });
     };
-
     socket.onerror = console.error;
     ws.current = socket;
   };
 
   const leaveRoom = () => {
-    if (ws.current) ws.current.close(1000, 'User left room');  // Code 1000 = normal closure
+    if (ws.current) ws.current.close(1000, 'User left room');
     ws.current = null;
     setCurrentRoom(null);
     setMessages([]);
@@ -253,29 +255,22 @@ export default function App() {
 
   const sendMessage = (payload) => {
     if (!ws.current) return;
-
-    const content =
-      typeof payload === 'string' ? payload : payload?.content;
-    const replyTo =
-      typeof payload === 'object' ? payload?.reply_to || null : null;
-
+    const content = typeof payload === 'string' ? payload : payload?.content;
+    const replyTo = typeof payload === 'object' ? payload?.reply_to || null : null;
     if (!content?.trim()) return;
-
-    ws.current.send(
-      JSON.stringify({
-        content: content.trim(),
-        reply_to: replyTo,
-      })
-    );
+    ws.current.send(JSON.stringify({ content: content.trim(), reply_to: replyTo }));
   };
 
-  // ================= LOGOUT =================
   const logout = () => {
-    // Close WebSocket silently without triggering leave message
     if (ws.current) {
       ws.current.onmessage = null;
       ws.current.onerror = null;
       ws.current.close();
+      ws.current = null;
+    }
+    if (notificationWs.current) {
+      notificationWs.current.close();
+      notificationWs.current = null;
     }
 
     setUser(null);
@@ -287,68 +282,72 @@ export default function App() {
     setUsername('');
     setEmail('');
     setConfirmPassword('');
+    setShowRequestsPage(false);
+    setNotificationBadgeCount(0);
   };
 
-  // ================= RENDER =================
   if (!user) {
     return (
       <LoginForm
         username={username}
-        email={email}  
+        email={email}
         password={password}
-        confirmPassword={confirmPassword}  
+        confirmPassword={confirmPassword}
         isLogin={isLogin}
         error={error}
         setUsername={setUsername}
-        setEmail={setEmail}  
+        setEmail={setEmail}
         setPassword={setPassword}
-        setConfirmPassword={setConfirmPassword}  
+        setConfirmPassword={setConfirmPassword}
         setIsLogin={setIsLogin}
         onSubmit={handleAuth}
       />
     );
   }
-  if (showProfile) {
-      return (
-        <UserProfile
-          user={user}
-          token={token} 
-          onClose={() => setShowProfile(false)}
-          onLogout={logout}
-        />
-      );
-    }
+
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar
         user={user}
+        token={token}
         rooms={rooms}
-        onShowProfile={() => setShowProfile(true)}
         messagesByRoom={messagesByRoom}
         currentRoom={currentRoom}
         showCreateRoom={showCreateRoom}
-        newRoomName={newRoomName}
-        setNewRoomName={setNewRoomName}
         setShowCreateRoom={setShowCreateRoom}
         onCreateRoom={createRoom}
         onDeleteRoom={deleteRoom}
         onJoinRoom={joinRoom}
         onLogout={logout}
+        onOpenRequestsPage={() => setShowRequestsPage(true)}
+        hasNotificationBadge={notificationBadgeCount > 0}
+        onRefreshBadge={refreshNotificationBadge}
       />
 
-      <ChatWindow
-        user={user}
-        token={token}
-        room={currentRoom}
-        messages={messages}
-        setMessages={setMessages}
-        newMessage={newMessage}
-        setNewMessage={setNewMessage}
-        onSend={sendMessage}
-        onLeave={leaveRoom}
-        onAddMember={addMemberToRoom}
-      />
+      <div className="flex-1 flex flex-col">
+        {showRequestsPage ? (
+          <AddContact
+            token={token}
+            onRoomRefresh={fetchRooms}
+            refreshSignal={contactEventVersion}
+            onNotificationChange={setNotificationBadgeCount}
+            onBack={() => setShowRequestsPage(false)}
+          />
+        ) : (
+          <ChatWindow
+            user={user}
+            token={token}
+            room={currentRoom}
+            messages={messages}
+            setMessages={setMessages}
+            newMessage={newMessage}
+            setNewMessage={setNewMessage}
+            onSend={sendMessage}
+            onLeave={leaveRoom}
+            onAddMember={addMemberToRoom}
+          />
+        )}
+      </div>
     </div>
   );
-  
 }

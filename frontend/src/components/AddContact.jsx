@@ -25,9 +25,7 @@ export default function AddContact({
   };
 
   const fetchNotifications = async () => {
-    const res = await fetch(`${API_URL}/contacts/notifications`, {
-      headers: authHeader,
-    });
+    const res = await fetch(`${API_URL}/contacts/notifications`, { headers: authHeader });
     if (!res.ok) return [];
     const data = await res.json();
     setNotifications(data);
@@ -35,13 +33,9 @@ export default function AddContact({
   };
 
   const refreshAll = async () => {
-    const [incoming, allNotifications] = await Promise.all([
-      fetchRequests(),
-      fetchNotifications(),
-    ]);
-
+    const [incoming, all] = await Promise.all([fetchRequests(), fetchNotifications()]);
     if (onNotificationChange) {
-      const unread = allNotifications.filter((n) => !n.read).length;
+      const unread = all.filter((n) => !n.read).length;
       onNotificationChange(unread + incoming.length);
     }
   };
@@ -99,16 +93,11 @@ export default function AddContact({
         {success && <p className="text-green-600 mb-2">{success}</p>}
 
         <h3 className="font-semibold mb-2">Incoming Requests</h3>
-        {requests.length === 0 && (
-          <p className="text-sm text-gray-500 mb-4">No pending requests</p>
-        )}
+        {requests.length === 0 && <p className="text-sm text-gray-500 mb-4">No pending requests</p>}
         {requests.length > 0 && (
           <ul className="mb-5 border rounded">
             {requests.map((req) => (
-              <li
-                key={req.request_id}
-                className="flex justify-between items-center border-b px-3 py-2"
-              >
+              <li key={req.request_id} className="flex justify-between items-center border-b px-3 py-2">
                 <span>{req.from_username}</span>
                 <div className="flex gap-2">
                   <button
@@ -130,17 +119,13 @@ export default function AddContact({
         )}
 
         <h3 className="font-semibold mb-2">Notifications</h3>
-        {notifications.length === 0 && (
-          <p className="text-sm text-gray-500">No notifications</p>
-        )}
+        {notifications.length === 0 && <p className="text-sm text-gray-500">No notifications</p>}
         {notifications.length > 0 && (
           <ul className="max-h-72 overflow-y-auto border rounded">
             {notifications.map((note) => (
               <li
                 key={note.notification_id}
-                className={`px-3 py-2 border-b text-sm ${
-                  note.read ? 'bg-gray-50' : 'bg-blue-50'
-                }`}
+                className={`px-3 py-2 border-b text-sm ${note.read ? 'bg-gray-50' : 'bg-blue-50'}`}
               >
                 <div className="flex justify-between gap-2">
                   <p>{note.message}</p>

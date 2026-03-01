@@ -1,70 +1,29 @@
-// UserProfile.jsx
-import { X, Edit2, LogOut } from 'lucide-react';
-import { useState, useRef } from 'react';
-import { updateUserProfile } from '../api/api.jsx'; // Make sure this exists
+import { Bell, Edit2, LogOut, X } from 'lucide-react';
+import { useState } from 'react';
 
-export default function UserProfile({ user, onClose, onLogout }) {
+export default function UserProfile({
+  user,
+  onClose,
+  onLogout,
+  onOpenRequests,
+  hasNotificationBadge,
+}) {
   const [editing, setEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
   const [username, setUsername] = useState(user.username);
   const [email, setEmail] = useState(user.email || '');
   const [bio, setBio] = useState(user.bio || '');
   const [status, setStatus] = useState(user.status || 'Online');
-  const [avatar, setAvatar] = useState(null); // file object
-  const [preview, setPreview] = useState(user.avatar || null); // URL preview
 
-  const fileInputRef = useRef(null);
-
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setAvatar(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setPreview(reader.result);
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSave = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const formData = new FormData();
-      formData.append('username', username);
-      formData.append('email', email);
-      formData.append('bio', bio);
-   
-      if (avatar) formData.append('avatar', avatar);
-
-      // Call backend API
-      const updated = await updateUserProfile(user.token, user.id, formData);
-
-      // Update preview if backend returns avatar URL
-      if (updated.avatar) setPreview(updated.avatar);
-
-      setEditing(false);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || 'Failed to update profile');
-    } finally {
-      setLoading(false);
-    }
+  const handleSave = () => {
+    setEditing(false);
+    console.log('Saved', { username, email, bio, status });
   };
 
   return (
     <>
-      {/* Blurred background */}
-      <div
-        className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40" onClick={onClose} />
 
-      {/* Sliding panel */}
       <div className="fixed top-0 left-0 h-full w-80 bg-white shadow-xl z-50 flex flex-col transform transition-transform duration-300 translate-x-0">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-xl font-bold">Profile</h2>
           <button onClick={onClose} className="text-gray-600 hover:text-gray-800">
@@ -72,33 +31,9 @@ export default function UserProfile({ user, onClose, onLogout }) {
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 p-6 overflow-y-auto">
-          <div className="flex flex-col items-center mb-6 relative">
-            {/* Avatar */}
-            <div className="relative w-24 h-24 rounded-full mb-2">
-              <img
-                src={preview || 'https://via.placeholder.com/96'}
-                alt="Profile"
-                className="w-full h-full rounded-full object-cover"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 right-0 bg-white border rounded-full p-1 shadow hover:bg-gray-100"
-                title="Change profile picture"
-              >
-                <Edit2 size={16} />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="hidden"
-              />
-            </div>
-
-            {/* Display info */}
+          <div className="flex flex-col items-center mb-6">
+            <div className="w-24 h-24 rounded-full bg-gray-300 mb-2" />
             {!editing ? (
               <>
                 <p className="font-medium text-lg">{username}</p>
@@ -106,7 +41,7 @@ export default function UserProfile({ user, onClose, onLogout }) {
                 <p className="text-sm text-gray-500 italic">{status}</p>
               </>
             ) : (
-              <div className="flex flex-col gap-3 w-full mt-3">
+              <div className="flex flex-col gap-3 w-full">
                 <input
                   type="text"
                   value={username}
@@ -128,15 +63,10 @@ export default function UserProfile({ user, onClose, onLogout }) {
                   className="w-full px-3 py-2 border rounded"
                   placeholder="Bio"
                 />
-      
               </div>
             )}
           </div>
 
-          {/* Error */}
-          {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
-
-          {/* Action buttons */}
           <div className="flex flex-col gap-3">
             {!editing ? (
               <button
@@ -148,14 +78,21 @@ export default function UserProfile({ user, onClose, onLogout }) {
             ) : (
               <button
                 onClick={handleSave}
-                disabled={loading}
-                className={`w-full py-2 rounded-lg text-white ${
-                  loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
-                }`}
+                className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
               >
-                {loading ? 'Saving...' : 'Save'}
+                Save
               </button>
             )}
+
+            <button
+              onClick={onOpenRequests}
+              className="relative flex items-center justify-center gap-2 w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700"
+            >
+              <Bell size={16} /> Chat Requests
+              {hasNotificationBadge && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-red-400" />
+              )}
+            </button>
 
             <button
               onClick={onLogout}

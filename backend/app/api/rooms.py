@@ -56,18 +56,29 @@ async def get_rooms(current_user: User = Depends(get_current_user)):
         List of all rooms with member counts
     """
     rooms = await room_repository.get_all_rooms()
-    
-    return [
-        Room(
-            id=room["id"],
-            name=room["name"],
-            description=room.get("description", ""),
-            created_at=room["created_at"],
-            created_by=room["created_by"],
-            members=room.get("members", [])
+    visible_rooms = []
+
+    for room in rooms:
+        room_type = room.get("type", "group")
+        participants = room.get("participants", [])
+
+        # DM rooms are visible only to their two participants.
+        if room_type == "dm" and current_user.username not in participants:
+            continue
+
+        visible_rooms.append(
+            Room(
+                id=room["id"],
+                name=room["name"],
+                description=room.get("description", ""),
+                created_at=room["created_at"],
+                created_by=room["created_by"],
+                type=room_type,
+                members=room.get("members", []),
+            )
         )
-        for room in rooms
-    ]
+
+    return visible_rooms
 
 
 @router.get("/{room_id}", response_model=Room)
@@ -92,6 +103,12 @@ async def get_room(room_id: str, current_user: User = Depends(get_current_user))
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Room not found"
         )
+
+    if room.get("type") == "dm" and current_user.username not in room.get("participants", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this DM room",
+        )
     
     return Room(
         id=room["id"],
@@ -99,6 +116,7 @@ async def get_room(room_id: str, current_user: User = Depends(get_current_user))
         description=room.get("description", ""),
         created_at=room["created_at"],
         created_by=room["created_by"],
+        type=room.get("type", "group"),
         members=room.get("members", [])
     )
 
@@ -124,6 +142,12 @@ async def delete_room(room_id: str, current_user: User = Depends(get_current_use
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Room not found"
+        )
+
+    if room.get("type") == "dm":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="DM rooms cannot be deleted from this endpoint",
         )
     
     if room["created_by"] != current_user.username:
@@ -160,6 +184,12 @@ async def get_room_members(room_id: str, current_user: User = Depends(get_curren
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Room not found"
+        )
+
+    if room.get("type") == "dm" and current_user.username not in room.get("participants", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this DM room",
         )
     
     return room.get("members", [])
@@ -234,6 +264,12 @@ async def get_room_member_count(room_id: str, current_user: User = Depends(get_c
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Room not found"
         )
+
+    if room.get("type") == "dm" and current_user.username not in room.get("participants", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this DM room",
+        )
     
     members = room.get("members", [])
     
@@ -266,6 +302,12 @@ async def get_room_messages(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Room not found",
+        )
+
+    if room.get("type") == "dm" and current_user.username not in room.get("participants", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this DM room",
         )
 
     try:
