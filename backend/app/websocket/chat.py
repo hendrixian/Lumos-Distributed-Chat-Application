@@ -58,9 +58,8 @@ class ConnectionManager:
             print(f"✅ Added {username} to room {room_id}")
             print(f"   Room now has {len(self.active_connections[room_id])} connections")
             
-            # Send message history to newly connected user
-            await self._send_message_history(websocket, room_id)
-            print(f"📜 Sent message history to {username}")
+            # History is loaded via HTTP pagination on the frontend.
+            # Keep WebSocket stream realtime-only to prevent duplicate batches.
             
             # Notify all users (across all servers) that user joined
             join_message = {
@@ -178,11 +177,13 @@ class ConnectionManager:
         
         for msg in messages:
             message_data = {
+                "_id": msg.get("_id"),
                 "type": msg.get("type", "message"),
                 "room_id": room_id,
                 "username": msg["username"],
                 "content": msg["content"],
-                "timestamp": msg["timestamp"].isoformat()
+                "timestamp": msg["timestamp"].isoformat(),
+                "reply_to": msg.get("reply_to"),
             }
             await websocket.send_text(json.dumps(message_data))
 
@@ -209,24 +210,28 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                 
                 message_data = json.loads(data)
                 
-                # Create message object
-                message = {
-                    "type": "message",
-                    "room_id": room_id,
-                    "username": username,
-                    "content": message_data.get("content", ""),
-                    "timestamp": datetime.utcnow().isoformat()
-                }
+                reply_to = message_data.get("reply_to")
                 
                 print(f"💾 Saving message to MongoDB: {username} in {room_id}")
                 
-                # Save message to MongoDB
-                await message_repository.save_message(
+                # Save message first and reuse persisted data in broadcast.
+                saved_message = await message_repository.save_message(
                     room_id=room_id,
                     username=username,
-                    content=message["content"],
-                    message_type="message"
+                    content=message_data.get("content", ""),
+                    message_type="message",
+                    reply_to=reply_to,
                 )
+
+                message = {
+                    "_id": saved_message.get("_id"),
+                    "type": "message",
+                    "room_id": room_id,
+                    "username": username,
+                    "content": saved_message.get("content", ""),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "reply_to": reply_to,
+                }
                 
                 print(f"📤 Publishing to Redis: {username} in {room_id}")
                 

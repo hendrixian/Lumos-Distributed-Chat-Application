@@ -20,7 +20,6 @@ export default function App() {
   const [rooms, setRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(null);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
 
   const [messages, setMessages] = useState([]);
   const [messagesByRoom, setMessagesByRoom] = useState({});
@@ -43,6 +42,7 @@ export default function App() {
   const refreshNotificationBadge = async (overrideToken) => {
     const activeToken = overrideToken || token;
     if (!activeToken) return;
+
     try {
       const headers = { Authorization: `Bearer ${activeToken}` };
       const [notificationsRes, requestsRes] = await Promise.all([
@@ -55,7 +55,6 @@ export default function App() {
         notificationsRes.json(),
         requestsRes.json(),
       ]);
-
       const unreadCount = notifications.filter((n) => !n.read).length;
       setNotificationBadgeCount(unreadCount + requests.length);
     } catch (err) {
@@ -83,9 +82,7 @@ export default function App() {
       setContactEventVersion((prev) => prev + 1);
       if (data.type === 'contact_accepted') fetchRooms();
     };
-    notificationWs.current.onerror = (err) => {
-      console.error('Notification WS error', err);
-    };
+    notificationWs.current.onerror = console.error;
 
     return () => {
       if (notificationWs.current) {
@@ -148,46 +145,93 @@ export default function App() {
   };
 
   const fetchRooms = async () => {
-    const res = await fetch(`${API_URL}/rooms/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    setRooms(await res.json());
+    try {
+      const res = await fetch(`${API_URL}/rooms/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `Failed to fetch rooms (${res.status})`);
+      setRooms(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('fetchRooms failed:', err);
+    }
   };
 
-  const createRoom = async () => {
-    if (!newRoomName.trim()) return;
+  const createRoom = async (roomData = {}) => {
+    const roomName = (roomData?.name ?? '').trim();
+    const roomDescription = (roomData?.description ?? '').trim();
+    if (!roomName) return false;
 
-    await fetch(`${API_URL}/rooms/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: newRoomName }),
-    });
+    try {
+      const res = await fetch(`${API_URL}/rooms/`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: roomName, description: roomDescription }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `Failed to create room (${res.status})`);
 
-    setNewRoomName('');
-    setShowCreateRoom(false);
-    fetchRooms();
+      setShowCreateRoom(false);
+      await fetchRooms();
+      return true;
+    } catch (err) {
+      console.error('createRoom failed:', err);
+      return false;
+    }
   };
 
   const deleteRoom = async (roomId) => {
-    await fetch(`${API_URL}/rooms/${roomId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    try {
+      const res = await fetch(`${API_URL}/rooms/${roomId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data?.detail || 'Failed to delete room');
+      }
+      if (currentRoom?.id === roomId) leaveRoom();
+      await fetchRooms();
+    } catch (err) {
+      console.error('deleteRoom failed:', err);
+      window.alert(err.message || 'Failed to delete room');
+    }
+  };
 
-    if (currentRoom?.id === roomId) leaveRoom();
-    fetchRooms();
+  const addMemberToRoom = async (room) => {
+    if (!room?.id || room.created_by !== user?.username) return false;
+    const input = window.prompt('Enter username to add to this room:');
+    const usernameToAdd = input?.trim();
+    if (!usernameToAdd) return false;
+
+    try {
+      const res = await fetch(`${API_URL}/rooms/${room.id}/members`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: usernameToAdd }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `Failed to add member (${res.status})`);
+      await fetchRooms();
+      return true;
+    } catch (err) {
+      console.error('addMemberToRoom failed:', err);
+      window.alert(err.message || 'Failed to add member');
+      return false;
+    }
   };
 
   const joinRoom = (room) => {
     setShowRequestsPage(false);
     if (ws.current) ws.current.close();
-
     setCurrentRoom(room);
-    const roomMessages = messagesByRoom[room.id] || [];
-    setMessages(roomMessages);
+    setMessages(messagesByRoom[room.id] || []);
 
     const socket = new WebSocket(`${WS_URL}/ws/${room.id}/${user.username}`);
     socket.onmessage = (event) => {
@@ -209,10 +253,12 @@ export default function App() {
     setMessages([]);
   };
 
-  const sendMessage = () => {
-    if (!newMessage.trim() || !ws.current) return;
-    ws.current.send(JSON.stringify({ content: newMessage }));
-    setNewMessage('');
+  const sendMessage = (payload) => {
+    if (!ws.current) return;
+    const content = typeof payload === 'string' ? payload : payload?.content;
+    const replyTo = typeof payload === 'object' ? payload?.reply_to || null : null;
+    if (!content?.trim()) return;
+    ws.current.send(JSON.stringify({ content: content.trim(), reply_to: replyTo }));
   };
 
   const logout = () => {
@@ -268,8 +314,6 @@ export default function App() {
         messagesByRoom={messagesByRoom}
         currentRoom={currentRoom}
         showCreateRoom={showCreateRoom}
-        newRoomName={newRoomName}
-        setNewRoomName={setNewRoomName}
         setShowCreateRoom={setShowCreateRoom}
         onCreateRoom={createRoom}
         onDeleteRoom={deleteRoom}
@@ -279,6 +323,7 @@ export default function App() {
         hasNotificationBadge={notificationBadgeCount > 0}
         onRefreshBadge={refreshNotificationBadge}
       />
+
       <div className="flex-1 flex flex-col">
         {showRequestsPage ? (
           <AddContact
@@ -291,12 +336,15 @@ export default function App() {
         ) : (
           <ChatWindow
             user={user}
+            token={token}
             room={currentRoom}
             messages={messages}
+            setMessages={setMessages}
             newMessage={newMessage}
             setNewMessage={setNewMessage}
             onSend={sendMessage}
             onLeave={leaveRoom}
+            onAddMember={addMemberToRoom}
           />
         )}
       </div>

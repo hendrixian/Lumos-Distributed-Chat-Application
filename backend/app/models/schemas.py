@@ -20,10 +20,15 @@ class TokenData(BaseModel):
 
 class RoomCreate(BaseModel):
     name: str
+    description: Optional[str] = ""
+
+class RoomMemberAdd(BaseModel):
+    username: str
 
 class Room(BaseModel):
     id: str
     name: str
+    description: Optional[str] = ""
     created_at: datetime
     created_by: str
     type: str = "group"

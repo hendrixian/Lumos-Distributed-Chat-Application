@@ -11,8 +11,6 @@ export default function Sidebar({
   messagesByRoom,
   currentRoom,
   showCreateRoom,
-  newRoomName,
-  setNewRoomName,
   setShowCreateRoom,
   onCreateRoom,
   onDeleteRoom,
@@ -24,6 +22,7 @@ export default function Sidebar({
 }) {
   const [showProfile, setShowProfile] = useState(false);
   const [search, setSearch] = useState('');
+  const [newRoomData, setNewRoomData] = useState({ name: '', description: '' });
   const [userResults, setUserResults] = useState([]);
   const [searchError, setSearchError] = useState('');
   const [searchSuccess, setSearchSuccess] = useState('');
@@ -63,12 +62,10 @@ export default function Sidebar({
   }, [search, token]);
 
   const filteredRooms = useMemo(() => {
-    return rooms.filter((room) =>
-      room.name.toLowerCase().includes(search.toLowerCase())
-    );
+    return rooms.filter((room) => room.name.toLowerCase().includes(search.toLowerCase()));
   }, [rooms, search]);
 
-  const sendRequest = async (username) => {
+  const sendRequest = async (targetUsername) => {
     setSearchError('');
     setSearchSuccess('');
     try {
@@ -78,18 +75,26 @@ export default function Sidebar({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username: targetUsername }),
       });
       if (!res.ok) {
         const data = await res.json();
         setSearchError(data.detail || 'Failed to send request');
         return;
       }
-      setSearchSuccess(`Request sent to ${username}`);
+      setSearchSuccess(`Request sent to ${targetUsername}`);
       if (onRefreshBadge) onRefreshBadge();
     } catch (err) {
       setSearchError('Failed to send request');
     }
+  };
+
+  const handleCreateRoomSubmit = async () => {
+    if (!newRoomData.name.trim()) return;
+    const created = await onCreateRoom(newRoomData);
+    if (!created) return;
+    setNewRoomData({ name: '', description: '' });
+    setShowCreateRoom(false);
   };
 
   return (
@@ -106,7 +111,6 @@ export default function Sidebar({
               <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-600" />
             )}
           </button>
-
           <input
             type="text"
             value={search}
@@ -118,25 +122,36 @@ export default function Sidebar({
 
         <div className="p-4 border-b">
           {showCreateRoom ? (
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <input
-                className="flex-1 px-2 py-1 border rounded"
-                value={newRoomName}
-                onChange={(e) => setNewRoomName(e.target.value)}
+                className="px-2 py-1 border rounded"
+                value={newRoomData.name}
+                onChange={(e) => setNewRoomData((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Room name"
               />
-              <button
-                onClick={onCreateRoom}
-                className="bg-blue-600 text-white px-3 rounded"
-              >
-                Add
-              </button>
+              <input
+                className="px-2 py-1 border rounded"
+                value={newRoomData.description}
+                onChange={(e) => setNewRoomData((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Description"
+              />
+              <div className="flex gap-2">
+                <button onClick={handleCreateRoomSubmit} className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+                  Create
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCreateRoom(false);
+                    setNewRoomData({ name: '', description: '' });
+                  }}
+                  className="flex-1 bg-gray-300 text-gray-800 py-2 rounded hover:bg-gray-400"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : (
-            <button
-              onClick={() => setShowCreateRoom(true)}
-              className="w-full bg-blue-600 text-white py-2 rounded flex justify-center gap-2"
-            >
+            <button onClick={() => setShowCreateRoom(true)} className="w-full bg-blue-600 text-white py-2 rounded flex justify-center gap-2">
               <Plus /> Create Room
             </button>
           )}
@@ -148,14 +163,9 @@ export default function Sidebar({
           {search.trim() && (
             <div className="border-b">
               <p className="px-4 pt-3 pb-2 text-xs font-semibold text-gray-500">Users</p>
-              {userResults.length === 0 && (
-                <p className="px-4 pb-3 text-sm text-gray-400">No matching users</p>
-              )}
+              {userResults.length === 0 && <p className="px-4 pb-3 text-sm text-gray-400">No matching users</p>}
               {userResults.map((item) => (
-                <div
-                  key={`user-${item.username}`}
-                  className="px-4 py-2 flex items-center justify-between hover:bg-gray-50"
-                >
+                <div key={`user-${item.username}`} className="px-4 py-2 flex items-center justify-between hover:bg-gray-50">
                   <span className="text-sm font-medium">{item.username}</span>
                   <button
                     className="inline-flex items-center gap-1 text-xs bg-blue-600 text-white px-2 py-1 rounded"
@@ -171,18 +181,18 @@ export default function Sidebar({
           <p className="px-4 pt-3 pb-2 text-xs font-semibold text-gray-500">Chats</p>
           {filteredRooms.map((room) => {
             const messages = messagesByRoom?.[room.id] || [];
-            const latestMessage =
-              messages.length > 0 ? messages[messages.length - 1] : null;
+            const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+            const timestamp = latestMessage
+              ? new Date(latestMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : '';
 
             return (
               <div
                 key={room.id}
-                className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
-                  currentRoom?.id === room.id ? 'bg-blue-50' : ''
-                }`}
+                className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${currentRoom?.id === room.id ? 'bg-blue-50' : ''}`}
                 onClick={() => onJoinRoom(room)}
               >
-                <div className="flex justify-between gap-2 items-center">
+                <div className="flex justify-between gap-2 items-start">
                   <div className="flex items-center gap-3 min-w-0">
                     <img
                       src={room.avatar || 'https://via.placeholder.com/40'}
@@ -199,18 +209,21 @@ export default function Sidebar({
                     </div>
                   </div>
 
-                  {room.created_by === user.username && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteRoom(room.id);
-                      }}
-                      className="text-red-600 shrink-0"
-                      title="Delete room"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {timestamp && <span className="text-xs text-gray-400">{timestamp}</span>}
+                    {room.created_by === user.username && room.type !== 'dm' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteRoom(room.id);
+                        }}
+                        className="text-red-600"
+                        title="Delete room"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
