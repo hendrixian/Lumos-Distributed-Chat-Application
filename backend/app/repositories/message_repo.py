@@ -1,76 +1,102 @@
-"""
-Message repository - handles message storage in MongoDB
-Stores chat history for persistence across sessions
-"""
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime
+from bson import ObjectId
 from ..core.database import mongodb
 
 
 class MessageRepository:
     """Repository for message data operations"""
-    
+
     def __init__(self):
         self.collection_name = "messages"
-    
+
     @property
     def collection(self):
         """Get messages collection"""
         return mongodb.get_collection(self.collection_name)
-    
-    async def save_message(self, room_id: str, username: str, content: str, 
-                          message_type: str = "message") -> Dict:
-        """
-        Save a message to the database
-        
-        Args:
-            room_id: Room where message was sent
-            username: User who sent the message
-            content: Message content
-            message_type: Type of message (message, user_joined, user_left)
-            
-        Returns:
-            Saved message document
-        """
+
+    # ==========================================
+    # SAVE MESSAGE
+    # ==========================================
+    async def save_message(
+        self,
+        room_id: str,
+        username: str,
+        content: str,
+        message_type: str = "message",
+        reply_to: Optional[str] = None
+    ) -> Dict:
+        """Save a new message to the database"""
+
         message_doc = {
             "room_id": room_id,
             "username": username,
             "content": content,
             "type": message_type,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow(),
         }
-        await self.collection.insert_one(message_doc)
+
+        if reply_to:
+            message_doc["reply_to"] = reply_to
+
+        result = await self.collection.insert_one(message_doc)
+
+        # Attach string _id for frontend use
+        message_doc["_id"] = str(result.inserted_id)
+
         return message_doc
-    
-    async def get_room_messages(self, room_id: str, limit: int = 100) -> List[Dict]:
+
+    # ==========================================
+    # GET ROOM MESSAGES (LAZY LOAD SUPPORT)
+    # ==========================================
+    async def get_room_messages(
+        self,
+        room_id: str,
+        limit: int = 50,
+        before: Optional[str] = None
+    ) -> List[Dict]:
         """
-        Get recent messages for a room
-        
+        Get paginated room messages using MongoDB _id pagination.
+
         Args:
             room_id: Room ID
-            limit: Maximum number of messages to retrieve
-            
+            limit: Max messages to return
+            before: Load messages older than this ObjectId
+
         Returns:
-            List of message documents
+            List of message documents (oldest first)
         """
-        cursor = self.collection.find(
-            {"room_id": room_id}
-        ).sort("timestamp", -1).limit(limit)
-        
+
+        query = {"room_id": room_id}
+
+        # If loading older messages
+        if before:
+            query["_id"] = {"$lt": ObjectId(before)}
+
+        # Sort newest first for efficient pagination
+        cursor = (
+            self.collection
+            .find(query)
+            .sort("_id", -1)
+            .limit(limit)
+        )
+
         messages = await cursor.to_list(length=limit)
-        # Reverse to show oldest first
-        return list(reversed(messages))
-    
+
+        # Reverse so frontend gets oldest → newest
+        messages.reverse()
+
+        # Convert ObjectId to string
+        for m in messages:
+            m["_id"] = str(m["_id"])
+
+        return messages
+
+    # ==========================================
+    # DELETE ROOM MESSAGES
+    # ==========================================
     async def delete_room_messages(self, room_id: str) -> int:
-        """
-        Delete all messages in a room
-        
-        Args:
-            room_id: Room ID
-            
-        Returns:
-            Number of messages deleted
-        """
+        """Delete all messages in a room"""
         result = await self.collection.delete_many({"room_id": room_id})
         return result.deleted_count
 

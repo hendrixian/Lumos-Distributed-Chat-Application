@@ -18,7 +18,13 @@ class RoomRepository:
         """Get rooms collection"""
         return mongodb.get_collection(self.collection_name)
     
-    async def create_room(self, room_id: str, name: str, created_by: str) -> Dict:
+    async def create_room(
+        self,
+        room_id: str,
+        name: str,
+        created_by: str,
+        description: str = "",
+    ) -> Dict:
         """
         Create a new chat room
         
@@ -33,6 +39,7 @@ class RoomRepository:
         room_doc = {
             "id": room_id,
             "name": name,
+            "description": description or "",
             "created_by": created_by,
             "created_at": datetime.utcnow(),
             "members": []  # Initialize with empty members list
