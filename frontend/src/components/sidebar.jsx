@@ -17,7 +17,7 @@ export default function Sidebar({
   onJoinRoom,
   onLogout,
   onOpenRequestsPage,
-  hasNotificationBadge,
+  notificationBadgeCount,
   onRefreshBadge,
 }) {
   const [showProfile, setShowProfile] = useState(false);
@@ -107,8 +107,10 @@ export default function Sidebar({
             title="Menu"
           >
             &#9776;
-            {hasNotificationBadge && (
-              <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-600" />
+            {notificationBadgeCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-[10px] leading-none flex items-center justify-center font-semibold">
+                {notificationBadgeCount > 99 ? '99+' : notificationBadgeCount}
+              </span>
             )}
           </button>
           <input
@@ -234,7 +236,7 @@ export default function Sidebar({
       {showProfile && (
         <UserProfile
           user={user}
-          hasNotificationBadge={hasNotificationBadge}
+          notificationBadgeCount={notificationBadgeCount}
           onOpenRequests={() => {
             setShowProfile(false);
             onOpenRequestsPage();

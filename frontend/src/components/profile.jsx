@@ -6,7 +6,7 @@ export default function UserProfile({
   onClose,
   onLogout,
   onOpenRequests,
-  hasNotificationBadge,
+  notificationBadgeCount,
 }) {
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(user.username);
@@ -89,8 +89,10 @@ export default function UserProfile({
               className="relative flex items-center justify-center gap-2 w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700"
             >
               <Bell size={16} /> Chat Requests
-              {hasNotificationBadge && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-red-400" />
+              {notificationBadgeCount > 0 && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                  {notificationBadgeCount > 99 ? '99+' : notificationBadgeCount}
+                </span>
               )}
             </button>
 

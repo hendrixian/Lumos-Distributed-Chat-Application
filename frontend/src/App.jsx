@@ -320,7 +320,7 @@ export default function App() {
         onJoinRoom={joinRoom}
         onLogout={logout}
         onOpenRequestsPage={() => setShowRequestsPage(true)}
-        hasNotificationBadge={notificationBadgeCount > 0}
+        notificationBadgeCount={notificationBadgeCount}
         onRefreshBadge={refreshNotificationBadge}
       />
 
