@@ -1,379 +1,208 @@
 # Code Architecture Guide
 
-## 📐 Design Patterns Used
-
-### 1. Repository Pattern
-**Purpose**: Separate data access from business logic
-
-**Example**:
-```python
-# Instead of directly using MongoDB in routes:
-@app.get("/users")
-async def get_users():
-    users = await db.users.find()  # ❌ Tight coupling
-
-# We use repositories:
-@app.get("/users")
-async def get_users():
-    users = await user_repository.get_all_users()  # ✅ Clean abstraction
-```
-
-**Benefits**:
-- Easy to test (mock repositories)
-- Easy to change database
-- Clean, readable code
-
-### 2. Service Layer Pattern
-**Purpose**: Centralize business logic
-
-**Example**:
-```python
-# Redis pub/sub logic is in pubsub_service
-# Not scattered across different files
-await pubsub_service.publish_message(room_id, message)
-```
-
-### 3. Dependency Injection
-**Purpose**: Loose coupling, testability
-
-**Example**:
-```python
-async def create_room(
-    room: RoomCreate,
-    current_user: User = Depends(get_current_user)  # Injected
-):
-    ...
-```
-
-## 🗂️ File Organization
-
-### Core Layer (`app/core/`)
-**Foundation of the application**
-
-#### `config.py`
-```python
-# Centralized configuration
-# All settings in one place
-# Environment variable management
-settings = Settings()  # Singleton
-```
-
-#### `database.py`
-```python
-# Database connection managers
-mongodb = Database()      # MongoDB singleton
-redis_cache = RedisCache()  # Redis singleton
-
-# Lifecycle methods
-await mongodb.connect()
-await mongodb.disconnect()
-```
-
-### Repository Layer (`app/repositories/`)
-**Data access abstraction**
-
-#### `user_repository.py`
-```python
-# All user database operations
-await user_repository.create_user(username, password)
-await user_repository.get_user_by_username(username)
-await user_repository.user_exists(username)
-```
-
-#### `room_repository.py`
-```python
-# All room database operations
-await room_repository.create_room(room_id, name, creator)
-await room_repository.get_all_rooms()
-await room_repository.delete_room(room_id)
-```
-
-#### `message_repository.py`
-```python
-# All message database operations
-await message_repository.save_message(room_id, username, content)
-await message_repository.get_room_messages(room_id)
-```
-
-**Why separate repositories?**
-- Single Responsibility Principle
-- Easy to test individual operations
-- Clear boundaries between data entities
-
-### Service Layer (`app/services/`)
-**Business logic and external service integration**
-
-#### `pubsub_service.py`
-```python
-# Redis pub/sub management
-# Distributed message broadcasting
-
-# Subscribe to room updates
-await pubsub_service.subscribe_to_room(room_id, callback)
-
-# Publish message to all servers
-await pubsub_service.publish_message(room_id, message)
-```
-
-**Key Features**:
-- Manages Redis channels
-- Background tasks for listening
-- Callback system for message handling
-
-### API Layer (`app/api/`)
-**HTTP endpoints**
-
-#### `auth.py`
-```python
-# Authentication endpoints
-POST   /auth/register  # Create new user
-POST   /auth/login     # Get JWT token
-GET    /auth/me        # Get current user
-
-# Uses: user_repository
-# Returns: Pydantic models
-```
-
-#### `rooms.py`
-```python
-# Room management endpoints
-POST   /rooms/         # Create room
-GET    /rooms/         # List rooms
-GET    /rooms/{id}     # Get room
-DELETE /rooms/{id}     # Delete room
-
-# Uses: room_repository, message_repository
-# Returns: Pydantic models
-```
-
-### WebSocket Layer (`app/websocket/`)
-**Real-time communication**
-
-#### `chat.py`
-```python
-# WebSocket connection management
-# Integrates: Redis pub/sub + MongoDB
-
-ConnectionManager:
-  - Manages local WebSocket connections
-  - Subscribes to Redis channels
-  - Broadcasts messages locally
-  - Coordinates with other server instances
-```
-
-**Message Flow**:
-```
-WebSocket → ConnectionManager → Redis Pub → All Servers → All Clients
-                ↓
-             MongoDB (save)
-```
-
-### Models Layer (`app/models/`)
-**Data schemas and validation**
-
-#### `schemas.py`
-```python
-# Pydantic models for validation
-UserCreate    # Registration data
-User          # User response
-Token         # JWT token
-Room          # Room data
-ChatMessage   # WebSocket message
-```
-
-## 🔄 Request Flow Examples
-
-### User Registration Flow
-```
-1. POST /auth/register
-2. auth.py → register()
-3. user_repository.user_exists()  # Check if exists
-4. user_repository.create_user()  # Save to MongoDB
-5. Return User model
-```
-
-### Sending a Message Flow
-```
-1. WebSocket message received
-2. chat.py → websocket_endpoint()
-3. message_repository.save_message()  # Save to MongoDB
-4. pubsub_service.publish_message()   # Broadcast via Redis
-5. All servers receive via Redis
-6. Each server broadcasts to local WebSocket connections
-7. All clients see the message
-```
-
-### Joining a Room Flow
-```
-1. WebSocket connect
-2. ConnectionManager.connect()
-3. pubsub_service.subscribe_to_room()    # Subscribe to Redis channel
-4. message_repository.get_room_messages() # Get history from MongoDB
-5. Send history to user
-6. User ready to chat
-```
-
-## 🎨 Code Style Guide
-
-### Function Documentation
-```python
-async def create_room(self, room_id: str, name: str, created_by: str) -> Dict:
-    """
-    Create a new chat room
-    
-    Args:
-        room_id: Unique room identifier
-        name: Room name
-        created_by: Username of creator
-        
-    Returns:
-        Created room document
-    """
-```
-
-### Type Hints
-```python
-# Always use type hints
-async def get_user(username: str) -> Optional[Dict]:
-    ...
-
-# For complex types
-from typing import List, Dict, Optional
-```
-
-### Naming Conventions
-```python
-# Classes: PascalCase
-class ConnectionManager:
-
-# Functions/Variables: snake_case
-async def create_room():
-user_repository = UserRepository()
-
-# Constants: UPPER_SNAKE_CASE
-MAX_CONNECTIONS = 1000
-```
-
-### Error Handling
-```python
-# Use FastAPI HTTPException
-if not room:
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Room not found"
-    )
-```
-
-## 🧩 Key Components Explained
-
-### Singleton Pattern
-```python
-# Only one instance of database connections
-mongodb = Database()      # Global
-redis_cache = RedisCache()  # Global
-
-# Everyone uses the same instance
-# No duplicate connections
-```
-
-### Async/Await
-```python
-# All I/O operations are async
-await mongodb.connect()
-await user_repository.create_user(...)
-await websocket.send_text(...)
-
-# Benefits:
-# - Non-blocking I/O
-# - Better performance
-# - Handle many concurrent connections
-```
-
-### Lifespan Management
-```python
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    await mongodb.connect()
-    await redis_cache.connect()
-    
-    yield  # App runs
-    
-    # Shutdown
-    await mongodb.disconnect()
-    await redis_cache.disconnect()
-```
-
-## 🔧 Adding New Features
-
-### Add a New Entity (e.g., "Friends")
-
-**1. Create Repository**
-```python
-# app/repositories/friend_repository.py
-class FriendRepository:
-    async def add_friend(self, user: str, friend: str):
-        ...
-```
-
-**2. Create API Endpoints**
-```python
-# app/api/friends.py
-@router.post("/friends/add")
-async def add_friend(...):
-    await friend_repository.add_friend(...)
-```
-
-**3. Add to main.py**
-```python
-from .api import friends
-app.include_router(friends.router, prefix="/friends")
-```
-
-### Add a New Service
-
-**1. Create Service**
-```python
-# app/services/notification_service.py
-class NotificationService:
-    async def send_notification(self, user: str, message: str):
-        ...
-```
-
-**2. Use in Endpoints**
-```python
-from ..services.notification_service import notification_service
-await notification_service.send_notification(...)
-```
-
-## 📚 Dependencies Between Layers
-
-```
-API Layer (auth.py, rooms.py)
-    ↓ uses
-Repository Layer (user_repository, room_repository)
-    ↓ uses
-Core Layer (database, config)
-
-Service Layer (pubsub_service)
-    ↓ uses
-Core Layer (redis_cache)
-
-WebSocket Layer (chat.py)
-    ↓ uses
-Repository + Service Layers
-```
-
-**Rule**: Never skip layers (e.g., API → Database directly)
-
-## ✅ Best Practices Used
-
-1. **Separation of Concerns**: Each module has one job
-2. **Single Responsibility**: Each class does one thing
-3. **DRY (Don't Repeat Yourself)**: Reusable repositories/services
-4. **Dependency Injection**: Loose coupling
-5. **Type Safety**: Type hints everywhere
-6. **Error Handling**: Proper exceptions
-7. **Documentation**: Docstrings for all functions
-8. **Async by Default**: All I/O is non-blocking
-
+This document explains how the current codebase is organized, how requests flow through the system, and where to add or modify features safely.
+
+## Design Principles
+
+- Separation of concerns across API, repository, service, and WebSocket layers
+- Async-first I/O for MongoDB, Redis, and WebSocket operations
+- Explicit data contracts using Pydantic schemas
+- Feature behavior encoded close to ownership boundaries
+
+## Backend Architecture
+
+Root: `backend/app/`
+
+### 1) Core Layer (`core/`)
+
+- `config.py`
+  - Central environment settings
+  - JWT and database/Redis config
+- `database.py`
+  - Singleton-like connection managers for MongoDB and Redis
+  - Application startup/shutdown integration
+- `image_utils.py`
+  - Upload validation for user/group images
+  - Converts image bytes to base64 data URL
+  - Enforces content type and size limit (2 MB)
+- `ws_manager.py`
+  - Notification WebSocket manager for contact events
+
+### 2) API Layer (`api/`)
+
+- `auth.py`
+  - Register/login/JWT validation
+  - `GET /auth/me`
+- `users.py`
+  - User search
+  - `GET /users/me`
+  - `PATCH /users/me` for bio + profile image
+- `rooms.py`
+  - Room CRUD and members
+  - Presence endpoint
+  - `PATCH /rooms/{room_id}` for creator-admin group profile updates
+- `contacts.py`
+  - Contact requests, DM room generation, notifications
+- `ws.py`
+  - Notification socket endpoint
+
+### 3) Repository Layer (`repositories/`)
+
+- `room_repo.py`
+  - Room creation/read/update helpers
+  - Membership persistence (`add_member`, `remove_member`)
+- `message_repo.py`
+  - Message persistence and paginated history
+- `user_repo.py`
+  - User-related data access helpers
+
+### 4) Service Layer (`services/`)
+
+- `pubsub.py`
+  - Redis pub/sub abstraction for cross-instance chat fan-out
+
+### 5) WebSocket Layer (`websocket/`)
+
+- `chat.py`
+  - Chat room connection manager
+  - Real-time broadcast pipeline
+  - Explicit-leave behavior:
+    - Membership is removed only on `close(1000, "explicit_leave")`
+    - Silent disconnects keep room membership intact
+
+### 6) Models Layer (`models/`)
+
+- `schemas.py`
+  - API response/request contracts
+  - Includes:
+    - `User` with `bio`, `avatar_url`
+    - `Room` with `description`, `avatar_url`, `members`
+
+## Frontend Architecture
+
+Root: `frontend/src/`
+
+### 1) State Orchestration
+
+- `App.jsx`
+  - Global auth/session state
+  - Room list + current room state
+  - WebSocket socket lifecycle management
+  - API mutations for:
+    - User profile update
+    - Group profile update
+  - Auth UX:
+    - Non-blocking post-login hydration
+    - Loading states for login/register
+
+### 2) Main UI Components
+
+- `components/sidebar.jsx`
+  - Room list rendering
+  - Uses `room.avatar_url` where available
+  - Opens user profile panel
+- `components/profile.jsx`
+  - User self-profile UI
+  - Edit/save bio + profile photo
+- `pages/chatroom.jsx`
+  - Chat stream rendering
+  - Presence polling (`/rooms/{id}/presence`)
+  - Passes group update callbacks to group panel
+- `components/groupprofile.jsx`
+  - Group info/members panel
+  - Shows admin badge for creator
+  - Admin-only group edit controls (photo + description)
+  - Leave-room action
+- `pages/login.jsx`
+  - Login/register form
+  - Animated loading state during auth requests
+
+### 3) API Helpers
+
+- `api/api.jsx`
+  - Message pagination
+  - Presence fetch
+  - User profile fetch/update helpers
+
+## Request and Event Flows
+
+### Login Flow (Optimized UX)
+
+1. User submits login/register form
+2. Auth request completes
+3. UI transitions immediately to main app shell
+4. Background hydration runs in parallel:
+   - `GET /rooms/`
+   - badge fetch endpoints
+   - `GET /auth/me`
+5. Form shows spinner/status while request is running
+
+### Chat Message Flow (Distributed)
+
+1. Client sends WebSocket message
+2. Server stores message in MongoDB
+3. Server publishes message to Redis room channel
+4. All backend instances subscribed to that room receive it
+5. Each instance pushes to its local connected clients
+
+### Membership Flow
+
+1. User opens/joins room socket
+2. Backend ensures membership exists in MongoDB
+3. Reconnects do not emit repeated join-system messages if already a member
+4. User remains a member until explicit leave
+
+### Explicit Leave Flow
+
+1. Client closes socket with reason `explicit_leave`
+2. Backend removes member from room document
+3. Backend emits `user_left` message event
+
+### User Profile Update Flow
+
+1. `PATCH /users/me` with optional `bio`, `avatar`, `remove_avatar`
+2. Backend validates image type/size and stores as data URL
+3. Updated user object returned and applied to UI state
+
+### Group Profile Update Flow (Creator/Admin)
+
+1. Creator submits `PATCH /rooms/{room_id}` with optional description/avatar changes
+2. Backend enforces authorization (`created_by == current_user`)
+3. Updated room returned and patched into room list/current room in UI
+
+## Distributed Considerations
+
+- Messages and persistent entities are distributed correctly through MongoDB + Redis.
+- Presence endpoint currently reads in-memory room users from the serving backend instance.
+  - In single-instance this is accurate.
+  - In multi-instance without shared presence state, counts may be partial.
+
+## Data Model Notes
+
+- User document fields include:
+  - `username`, `email`, `hashed_password`, `bio`, `avatar_url`, timestamps
+- Room document fields include:
+  - `id`, `name`, `description`, `avatar_url`, `created_by`, `members`, timestamps
+- New optional fields do not require manual migration.
+
+## Extension Guidelines
+
+### Add a New API Feature
+
+1. Define/extend schema in `models/schemas.py` if needed
+2. Add API route in the relevant `api/*.py`
+3. Add repository method if data access logic grows
+4. Update frontend state wiring in `App.jsx`
+5. Add UI controls in responsible component
+
+### Add a New Distributed Event
+
+1. Define event payload shape in WebSocket handler
+2. Persist to MongoDB if event requires history
+3. Publish through `services/pubsub.py`
+4. Handle rendering in client WebSocket listeners
+
+## Current Tradeoffs
+
+- Image storage currently uses base64 data URLs in MongoDB for simplicity.
+- For production-scale media, migrate to object storage (S3/Cloud Storage) and store only URLs.

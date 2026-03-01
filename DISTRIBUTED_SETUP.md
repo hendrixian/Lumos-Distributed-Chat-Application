@@ -1,281 +1,222 @@
-# Distributed Chat Application Setup Guide
+# Distributed Setup Guide
 
-Your chat application is now a **truly distributed system** with MongoDB and Redis!
+This guide shows how to run the app in single-instance and multi-instance modes, and explains what is shared across instances.
 
-## Architecture Overview
+## Architecture Summary
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Client 1  │     │   Client 2  │     │   Client 3  │
-└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
-       │                   │                   │
-       │   WebSocket       │                   │
-       └───────┬───────────┴───────────────────┘
-               │
-        ┌──────▼──────┐
-        │Load Balancer│ (Nginx/HAProxy)
-        └──────┬──────┘
-               │
-       ┌───────┴────────┐
-       │                │
-┌──────▼──────┐  ┌──────▼──────┐
-│  Backend 1  │  │  Backend 2  │  Multiple FastAPI instances
-│  (Port 8001)│  │  (Port 8002)│
-└──────┬──────┘  └──────┬──────┘
-       │                │
-       │    ┌───────────┴──────────┐
-       │    │                      │
-┌──────▼────▼─┐            ┌──────▼──────┐
-│   MongoDB   │            │    Redis    │
-│  (Storage)  │            │  (Pub/Sub)  │
-└─────────────┘            └─────────────┘
-```
+Core distributed components:
 
-## New Components
+- FastAPI backend instances (one or many)
+- Redis Pub/Sub for cross-instance real-time fan-out
+- MongoDB for persistent shared state (users, rooms, messages, contacts)
 
-### MongoDB
-- **Purpose**: Persistent storage for users, rooms, and messages
-- **What it stores**:
-  - User accounts (username, hashed password)
-  - Chat rooms (id, name, creator, timestamp)
-  - Message history (all chat messages)
+Message path:
 
-### Redis
-- **Purpose**: Distributed message broadcasting (pub/sub)
-- **What it does**:
-  - Synchronizes messages across multiple backend instances
-  - Enables real-time communication between servers
-  - Acts as message broker for distributed architecture
+1. Client sends message to one backend instance via WebSocket
+2. Instance saves message in MongoDB
+3. Instance publishes event to Redis room channel
+4. All subscribed backend instances receive it
+5. Each instance emits to its local connected clients
 
-## Installation Steps
+## Prerequisites
 
-**Install MongoDB:**
+- Python 3.10+
+- Node.js 18+
+- MongoDB
+- Redis
 
-**Windows:**
-```bash
-# Download from: https://www.mongodb.com/try/download/community
-# Or use Chocolatey:
-choco install mongodb
+## Environment Configuration
 
-# Start MongoDB service
-net start MongoDB
+Create `backend/.env` with:
+
+```env
+SECRET_KEY=change-me
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+MONGODB_URL=mongodb://localhost:27017
+MONGODB_DB_NAME=chatapp
+
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=
 ```
 
-**Mac:**
-```bash
-brew tap mongodb/brew
-brew install mongodb-community
-brew services start mongodb-community
-```
+Notes:
 
-**Linux:**
-```bash
-sudo apt-get install mongodb
-sudo systemctl start mongodb
-```
+- `MONGODB_URL` and `REDIS_*` must be identical across all backend instances.
+- No manual MongoDB migration is required for current profile/group features.
 
-**Install Redis:**
-
-**Windows:**
-```bash
-# Download from: https://github.com/microsoftarchive/redis/releases
-# Or use WSL/Docker
-```
-
-**Mac:**
-```bash
-brew install redis
-brew services start redis
-```
-
-**Linux:**
-```bash
-sudo apt-get install redis-server
-sudo systemctl start redis
-```
-
-**Install Python Dependencies:**
+## Backend Setup
 
 ```bash
 cd backend
-pip install -r requirements.txt
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+# Linux/Mac
+# source venv/bin/activate
+
+pip install -r ../requirements.txt
 ```
 
-**Configure Environment:**
+## Frontend Setup
 
 ```bash
-# Copy example env file
-cp .env.example .env
-
-# Edit .env with your settings (or use defaults)
+cd frontend
+npm install
+npm run dev
 ```
 
-**Run Backend:**
+Default frontend constants in `frontend/src/App.jsx`:
+
+```js
+const API_URL = 'http://localhost:8002';
+const WS_URL = 'ws://localhost:8002';
+```
+
+## Run Single Instance (Local)
 
 ```bash
-# Single instance
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Multiple instances for testing (in separate terminals)
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8002
+cd backend
+python -m uvicorn app.main:app --reload --port 8002
 ```
 
-## New Features
+Use one frontend pointed to `8002`.
 
-### Message Persistence
-- Messages are now stored in MongoDB
-- When you join a room, you see the last 50 messages
-- Message history survives server restarts
+## Run Multiple Backend Instances (Local Test)
 
-### Data Persistence
-- Users persist across restarts
-- Rooms persist across restarts
-- No more data loss!
+In separate terminals:
 
-### Horizontal Scaling
-- Run multiple backend instances
-- Load balance across instances
-- Each instance handles different users
-- All instances stay in sync via Redis
-
-### Better Architecture
-- **Repository Pattern**: Clean data access layer
-- **Service Layer**: Business logic separated
-- **Clear Separation**: Database, API, WebSocket, Services
-
-## New Project Structure
-
-```
-backend/
-├── app/
-│   ├── main.py                    # FastAPI app with lifespan
-│   ├── api/
-│   │   ├── auth.py               # Auth endpoints (MongoDB)
-│   │   └── rooms.py              # Room endpoints (MongoDB)
-│   ├── websocket/
-│   │   └── chat.py               # WebSocket + Redis pub/sub
-│   ├── models/
-│   │   └── schemas.py            # Pydantic models
-│   ├── core/
-│   │   ├── config.py             # Settings
-│   │   └── database.py           # MongoDB + Redis connections
-│   ├── repositories/             # NEW: Data access layer
-│   │   ├── user_repository.py
-│   │   ├── room_repository.py
-│   │   └── message_repository.py
-│   └── services/                 # NEW: Business logic
-│       └── pubsub_service.py     # Redis pub/sub
-├── .env.example
-├── Dockerfile
-└── requirements.txt
-```
-## Configuration
-
-### MongoDB Collections
-
-The app creates these collections automatically:
-- `users` - User accounts
-- `rooms` - Chat rooms
-- `messages` - Chat history
-
-### Redis Channels
-
-Format: `chat:room:{room_id}`
-- Each room has its own pub/sub channel
-- Messages published to channel reach all backend instances
-
-## How It Works
-
-### Message Flow
-
-1. **User sends message** → WebSocket to Backend Instance 1
-2. **Backend 1** saves message to MongoDB
-3. **Backend 1** publishes message to Redis channel `chat:room:{room_id}`
-4. **All backend instances** subscribed to that channel receive it
-5. **Each backend** broadcasts to its local WebSocket connections
-6. **All users** see the message in real-time
-
-### Connection Flow
-
-1. **User connects** → WebSocket to any backend instance
-2. **Backend** subscribes to Redis channel for that room
-3. **Backend** sends message history from MongoDB
-4. **User** sees recent messages and can start chatting
-
-## Troubleshooting
-
-### MongoDB Connection Error
 ```bash
-# Check if MongoDB is running
-mongosh
-
-# Or check service
-# Windows:
-sc query MongoDB
-# Linux/Mac:
-brew services list  # or systemctl status mongodb
+cd backend
+python -m uvicorn app.main:app --reload --port 8001
 ```
 
-### Redis Connection Error
 ```bash
-# Check if Redis is running
-redis-cli ping
-# Should return: PONG
-
-# Or check service
-brew services list  # or systemctl status redis
+cd backend
+python -m uvicorn app.main:app --reload --port 8002
 ```
 
-### Messages Not Syncing Between Instances
-- Check Redis is running
-- Check both instances connected to same Redis
-- View Redis pub/sub activity: `redis-cli MONITOR`
+To test cross-instance behavior quickly:
 
-## 🚀 Production Deployment
+- Browser A frontend points to `8001`
+- Browser B frontend points to `8002`
+- Join same room from both users
+- Send messages both ways
 
-### Use a Load Balancer
+Expected:
 
-**Nginx example config:**
+- Messages sync in real-time across both instances
+- Message history is persisted and shared
+
+## What Is Shared vs Local
+
+Shared across instances:
+
+- Users, rooms, messages, contacts (MongoDB)
+- Chat message fan-out events (Redis Pub/Sub)
+
+Local to each instance:
+
+- In-memory active WebSocket connection list
+- In-memory online member set used by presence endpoint
+
+Presence caveat:
+
+- `GET /rooms/{room_id}/presence` reflects online users known to the serving instance.
+- In multi-instance mode without shared presence storage, online counts may be partial.
+
+## Current Distributed Behavior Highlights
+
+- Users remain room members until explicit leave action.
+- Reconnect/login does not spam repeated join-system messages for existing members.
+- User profile and group profile updates are persisted in MongoDB and visible across instances.
+
+## Production Topology Recommendations
+
+1. Put backend instances behind a load balancer that supports WebSocket upgrade.
+2. Keep all instances on the same MongoDB and Redis.
+3. Use managed services when possible:
+   - MongoDB Atlas
+   - Redis Cloud / ElastiCache
+4. Use TLS (`https://` and `wss://`).
+5. Rotate secrets and credentials if exposed.
+
+## Example Nginx Upstream (WebSocket Ready)
+
 ```nginx
 upstream chat_backend {
-    server backend1:8000;
-    server backend2:8000;
-    server backend3:8000;
+    server backend1:8002;
+    server backend2:8002;
 }
 
 server {
+    listen 443 ssl;
+    server_name your-domain.example;
+
     location / {
         proxy_pass http://chat_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
     }
 }
 ```
 
-### Environment Setup
-- Use managed MongoDB (MongoDB Atlas)
-- Use managed Redis (Redis Cloud, AWS ElastiCache)
-- Use strong SECRET_KEY
-- Enable authentication on MongoDB/Redis
+## MongoDB Notes
 
-## 📈 Performance Benefits
+No settings change is required for recent features.
 
-| Metric | Before | After |
-|--------|---------|-------|
-| Max concurrent users | ~1000 | ~10,000+ |
-| Message persistence | None | Full history |
-| Server redundancy | Single point of failure | Multiple instances |
-| Scalability | Vertical only | Horizontal scaling |
-| Data loss on restart | 100% | 0% |
+Automatic optional fields now used:
 
-## 🎉 You Now Have
+- `users.bio`
+- `users.avatar_url`
+- `rooms.avatar_url`
 
-✅ **Distributed Architecture** - Multiple backend instances  
-✅ **Message Persistence** - MongoDB storage  
-✅ **Real-time Sync** - Redis pub/sub  
-✅ **Horizontal Scaling** - Add more servers easily  
-✅ **Clean Code** - Repository pattern, service layer  
-✅ **Production Ready** - Docker, env config, proper architecture
+Existing documents without these fields remain compatible (defaults are applied).
 
+## Redis Notes
+
+Room channel format:
+
+- `chat:room:{room_id}`
+
+Check connectivity:
+
+```bash
+redis-cli ping
+```
+
+Monitor pub/sub activity:
+
+```bash
+redis-cli MONITOR
+```
+
+## Troubleshooting
+
+### Backend starts but clients cannot connect
+
+- Verify frontend `API_URL` and `WS_URL`
+- Verify CORS hosts in `backend/app/main.py`
+- Confirm backend port matches frontend config
+
+### Messages not syncing across instances
+
+- Confirm both instances point to same Redis
+- Confirm both instances point to same MongoDB
+- Inspect Redis monitor output while sending messages
+
+### Presence count looks wrong in multi-instance mode
+
+- Expected with current local-instance presence tracking
+- Move presence to shared Redis/Mongo state if global accuracy is required
+
+### Image upload fails
+
+- Ensure file type is PNG/JPEG/WEBP/GIF
+- Ensure file size is below 2 MB

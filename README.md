@@ -1,280 +1,172 @@
 # Distributed Chat Application
 
-A truly distributed, real-time chat application with message persistence, horizontal scaling, and enterprise-grade architecture.
+A real-time chat application built with FastAPI, React, MongoDB, and Redis, designed for horizontal scaling and persistent messaging.
 
-![Chat Application](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white) ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 
 ## Features
 
-### Core Features
-- **JWT Authentication** - Secure user registration and login
-- **Real-time Messaging** - Instant message delivery via WebSockets
-- **Room Management** - Create, join, and manage chat rooms
-- **User Presence** - See when users join and leave rooms
-- **Responsive Design** - Beautiful UI that works everywhere
-- **Message History** - Persistent chat history in MongoDB
+### Chat and Rooms
+- JWT authentication (register/login)
+- Public room creation and room membership management
+- Real-time messaging over WebSocket
+- Message persistence in MongoDB
+- Room presence (`members` + `online`)
+- Users stay in a room until they explicitly click **Leave Room**
+- Join/leave system messages only on intentional membership changes
 
-### Distributed Features
-- **Horizontal Scaling** - Run multiple backend instances
-- **Redis Pub/Sub** - Synchronize messages across all servers
-- **MongoDB Storage** - Persistent data that survives restarts
-- **Load Balancing Ready** - Distribute traffic across instances
-- **Fault Tolerant** - Continue working even if one server fails
+### Profile and Group Customization
+- User profile editing:
+  - Profile photo upload/remove
+  - Bio update
+- Group (room) editing by room creator/admin:
+  - Group photo upload/remove
+  - Group description update
+- Admin badge shown in group member list
 
-### Architecture Features
-- **Repository Pattern** - Clean data access layer
-- **Service Layer** - Centralized business logic
-- **Dependency Injection** - Loose coupling, high testability
-- **Clean Code** - Well-documented, maintainable codebase
-- **Docker Support** - Easy deployment with docker-compose
+### UX Improvements
+- Faster login transition (non-blocking post-login hydration)
+- Loading animation during login/register instead of a frozen screen
 
-## Architecture
+### Distributed Architecture
+- Redis Pub/Sub for multi-instance message fan-out
+- MongoDB for durable storage
+- Ready for load-balanced horizontal scaling
 
-### Technology Stack
+## Tech Stack
 
-**Backend**
-- FastAPI - Modern, fast web framework
-- Motor - Async MongoDB driver
-- Redis - Pub/sub messaging and caching
-- WebSockets - Real-time bidirectional communication
-- JWT - Secure authentication
+### Backend
+- FastAPI
+- Motor (async MongoDB driver)
+- Redis
+- WebSockets
+- JWT (python-jose)
 
-**Frontend**
-- React - UI library
-- Tailwind CSS - Utility-first styling
-- Lucide React - Icon library
-- Native WebSocket API - Real-time connection
-
-**Infrastructure**
-- MongoDB - Document database for persistence
-- Redis - In-memory data store for pub/sub
-
-## Project Structure
-
-```
-.
-├── backend/
-│   ├── app/
-│   │   ├── main.py                     # FastAPI app entry
-│   │   ├── core/
-│   │   │   ├── config.py               # Configuration
-│   │   │   └── database.py             # MongoDB & Redis connections
-│   │   ├── api/
-│   │   │   ├── auth.py                 # Authentication endpoints
-│   │   │   └── rooms.py                # Room management endpoints
-│   │   ├── repositories/               # Data access layer
-│   │   │   ├── user_repo.py
-│   │   │   ├── room_repo.py
-│   │   │   └── message_repo.py
-│   │   ├── services/                  # Business logic layer
-│   │   │   └── pubsub.py              # Redis pub/sub
-│   │   ├── websocket/
-│   │   │   └── chat.py                # WebSocket handler
-│   │   └── models/
-│   │       └── schemas.py             # Pydantic models
-│   ├── .env                           # Environment template
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx                    # React main component
-│   │   ├── main.jsx                   # React entry point
-│   │   ├── App.css                    
-│   │   └── index.css                  
-│   └── package.json                   # Node dependencies
-├── README.md                          # This file
-├── DISTRIBUTED_SETUP.md               # Detailed setup guide
-└── CODE_ARCHITECTURE.md               # Code structure guide
-└── requirements.txt                   # Python dependencies
-```
+### Frontend
+- React
+- Tailwind CSS
+- Lucide React
 
 ## Quick Start
 
-**Install Dependencies:**
+## 1) Prerequisites
+- Python 3.10+
+- Node.js 18+
+- MongoDB running
+- Redis running
 
-```bash
-# Install MongoDB
-# Windows: https://www.mongodb.com/try/download/community
-# Mac: brew install mongodb-community
-# Linux: sudo apt-get install mongodb
-
-# Install Redis
-# Windows: https://github.com/microsoftarchive/redis/releases
-# Mac: brew install redis
-# Linux: sudo apt-get install redis-server
-
-# Start services
-# MongoDB: mongod
-# Redis: redis-server
-```
-
-**Setup Backend:**
-
+## 2) Backend Setup
 ```bash
 cd backend
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+# source venv/bin/activate
 
-# Run backend
+pip install -r ../requirements.txt
 python -m uvicorn app.main:app --reload --port 8002
 ```
 
-**Setup Frontend:**
-
+## 3) Frontend Setup
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
 
-## Documentation
+## 4) Open App
+- Frontend: Vite default URL (usually `http://localhost:5173`)
+- Backend API docs: `http://localhost:8002/docs`
 
-- **[DISTRIBUTED_SETUP.md](DISTRIBUTED_SETUP.md)** - Complete setup guide with architecture details
-- **[CODE_ARCHITECTURE.md](CODE_ARCHITECTURE.md)** - Code structure and design patterns
-- **API Docs**: http://localhost:8000/docs (Swagger UI)
+## Configuration
 
-## Testing the Distributed System
+Backend reads environment variables from `backend/.env`:
 
-### Test Multiple Backend Instances
+```env
+SECRET_KEY=change-me
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-**Terminal 1:**
-```bash
-cd backend
-python -m uvicorn app.main:app --reload --port 8001
+MONGODB_URL=mongodb+srv://<username>:<password>@chatapp.k7wrdrd.mongodb.net/chatapp?retryWrites=true&w=majority&appName=chatapp
+MONGODB_DB_NAME=chatapp
+
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=
 ```
 
-**Terminal 2:**
-```bash
-cd backend
-python -m uvicorn app.main:app --reload --port 8002
+Update frontend backend URLs in `frontend/src/App.jsx`:
+
+```js
+const API_URL = 'http://localhost:8002';
+const WS_URL = 'ws://localhost:8002';
 ```
 
-**Browser Window 1** (connected to Instance 1):
-- Update `frontend/src/App.jsx`: `API_URL = 'http://localhost:8001'`
-- Register as "Alice"
-- Create a room
+## MongoDB Notes (Important)
 
-**Browser Window 2** (connected to Instance 2):
-- Update `frontend/src/App.jsx`: `API_URL = 'http://localhost:8002'`
-- Register as "Bob"
-- Join the same room
+No manual MongoDB migration is required for the new profile/group customization features.
 
-**Result**: Alice and Bob chat in real-time across different servers! 🎉
+- New optional fields are added automatically when users/rooms are updated:
+  - `users.bio`
+  - `users.avatar_url`
+  - `rooms.avatar_url`
+- Existing documents without these fields still work (code uses defaults).
 
-## How It Works
+## Image Upload Rules
 
-### Message Flow
+- Allowed types: PNG, JPEG, WEBP, GIF
+- Max file size: 2 MB
+- Current storage format: Base64 data URL in MongoDB
 
-1. **User sends message** → WebSocket to Backend Instance 1
-2. **Backend 1** saves message to MongoDB
-3. **Backend 1** publishes message to Redis channel `chat:room:{room_id}`
-4. **All backend instances** (1, 2, 3, ...) subscribed to channel receive message
-5. **Each backend** broadcasts message to its local WebSocket connections
-6. **All users** see the message instantly, regardless of which server they're connected to
+## Key API Endpoints
 
-### Data Persistence
+### Auth
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me`
 
-- **Users**: Stored in MongoDB `users` collection
-- **Rooms**: Stored in MongoDB `rooms` collection
-- **Messages**: Stored in MongoDB `messages` collection
-- **Real-time sync**: Via Redis pub/sub channels
+### User Profile
+- `GET /users/me`
+- `PATCH /users/me` (`bio`, `avatar`, `remove_avatar`)
 
-### Scalability
+### Rooms
+- `GET /rooms/`
+- `POST /rooms/`
+- `PATCH /rooms/{room_id}` (creator/admin only; `description`, `avatar`, `remove_avatar`)
+- `GET /rooms/{room_id}/presence`
+- `POST /rooms/{room_id}/members`
 
-```
-1 Backend Instance  →  ~1,000 concurrent users
-2 Backend Instances →  ~2,000 concurrent users
-3 Backend Instances →  ~3,000 concurrent users
-...and so on!
-```
-
-Add more instances behind a load balancer for virtually unlimited scaling.
-
-## 🔧 Configuration
-
-### Frontend Configuration
-
-Update `frontend/src/App.jsx`:
-
-```javascript
-const API_URL = 'http://localhost:8000';  // Your backend URL
-const WS_URL = 'ws://localhost:8000';     // Your WebSocket URL
-```
+## Docs
+- [DISTRIBUTED_SETUP.md](DISTRIBUTED_SETUP.md)
+- [CODE_ARCHITECTURE.md](CODE_ARCHITECTURE.md)
 
 ## Troubleshooting
 
-### MongoDB Connection Error
-```bash
-# Check if MongoDB is running
-mongosh
-# or
-mongo
+### Cannot connect to MongoDB
+- Verify MongoDB is running
+- Verify `MONGODB_URL` and `MONGODB_DB_NAME` in `backend/.env`
 
-# Start MongoDB service
-# Windows: net start MongoDB
-# Mac: brew services start mongodb-community
-# Linux: sudo systemctl start mongodb
-```
+### Cannot connect to Redis
+- Verify Redis is running
+- Verify `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`
 
-### Redis Connection Error
-```bash
-# Check if Redis is running
-redis-cli ping
-# Should return: PONG
+### WebSocket issues
+- Ensure backend is running on the same URL configured in frontend
+- Ensure `WS_URL` matches backend host/port
 
-# Start Redis service
-# Windows: redis-server
-# Mac: brew services start redis
-# Linux: sudo systemctl start redis
-```
+## Security Reminder
 
-### WebSocket Connection Failed
-- Ensure backend is running
-- Check CORS settings in `backend/app/main.py`
-- Verify WebSocket URL matches backend URL
-
-### Messages Not Syncing Between Instances
-- Verify all instances connected to same MongoDB
-- Verify all instances connected to same Redis
-- Check Redis pub/sub: `redis-cli MONITOR`
-
-## Production Deployment
-
-### Manual Deployment
-
-1. **Setup MongoDB Atlas** (managed MongoDB)
-2. **Setup Redis Cloud** (managed Redis)
-3. **Deploy backend** to Heroku, Railway, or AWS
-4. **Deploy frontend** to Vercel, Netlify, or AWS S3
-5. **Setup Nginx** for load balancing
-
-### Security Checklist
-
-- [ ] Change `SECRET_KEY` to random string
-- [ ] Use HTTPS in production
-- [ ] Enable MongoDB authentication
-- [ ] Enable Redis authentication
-- [ ] Set strong passwords
-- [ ] Enable rate limiting
-- [ ] Validate all inputs
-- [ ] Use environment variables for secrets
+If credentials or secrets were committed accidentally, rotate them immediately:
+- MongoDB credentials
+- Redis password
+- `SECRET_KEY`
 
 ## License
 
-This project is open source and available under the [MIT License](LICENSE).
-
-## Acknowledgments
-
-- FastAPI for the amazing framework
-- MongoDB for reliable persistence
-- Redis for blazing-fast pub/sub
-- React for the awesome UI library
-
----
+MIT. See [LICENSE](LICENSE).
