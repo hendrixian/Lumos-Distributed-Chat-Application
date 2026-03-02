@@ -3,9 +3,7 @@ import AddContact from './components/AddContact.jsx';
 import Sidebar from './components/sidebar';
 import ChatWindow from './pages/chatroom.jsx';
 import LoginForm from './pages/login.jsx';
-
-const API_URL = 'http://localhost:8002';
-const WS_URL = 'ws://localhost:8002';
+import { API_URL, WS_URL } from './config/endpoints.js';
 
 export default function App() {
   const [user, setUser] = useState(null);

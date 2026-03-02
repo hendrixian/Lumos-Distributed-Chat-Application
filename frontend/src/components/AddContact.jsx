@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-
-const API_URL = 'http://localhost:8002';
+import { API_URL } from '../config/endpoints.js';
 
 export default function AddContact({
   token,

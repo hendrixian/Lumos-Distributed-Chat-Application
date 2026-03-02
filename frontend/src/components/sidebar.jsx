@@ -1,8 +1,7 @@
 import { Plus, Trash2, UserPlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import UserProfile from './profile.jsx';
-
-const API_URL = 'http://localhost:8002';
+import { API_URL } from '../config/endpoints.js';
 
 export default function Sidebar({
   user,

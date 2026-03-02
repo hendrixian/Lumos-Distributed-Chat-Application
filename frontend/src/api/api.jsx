@@ -1,5 +1,4 @@
-const API_URL = 'http://localhost:8002';
-const WS_URL = 'ws://localhost:8002';
+import { API_URL, WS_URL } from '../config/endpoints.js';
 
 // =====================================================
 // ===================== MESSAGES ======================

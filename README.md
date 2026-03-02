@@ -102,12 +102,14 @@ REDIS_DB=0
 REDIS_PASSWORD=
 ```
 
-Update frontend backend URLs in `frontend/src/App.jsx`:
+For multi-device/LAN usage, set frontend endpoint env vars in `frontend/.env`:
 
-```js
-const API_URL = 'http://localhost:8002';
-const WS_URL = 'ws://localhost:8002';
+```env
+VITE_API_URL=http://<your-backend-host>:8002
+VITE_WS_URL=ws://<your-backend-host>:8002
 ```
+
+If these vars are not set, frontend now auto-uses the current browser host with backend port `8002`.
 
 ## MongoDB Notes (Important)
 

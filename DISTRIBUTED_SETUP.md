@@ -70,12 +70,14 @@ npm install
 npm run dev
 ```
 
-Default frontend constants in `frontend/src/App.jsx`:
+Frontend endpoints can be configured with `frontend/.env`:
 
-```js
-const API_URL = 'http://localhost:8002';
-const WS_URL = 'ws://localhost:8002';
+```env
+VITE_API_URL=http://<backend-host>:8002
+VITE_WS_URL=ws://<backend-host>:8002
 ```
+
+If not set, frontend auto-uses the current browser hostname with backend port `8002`.
 
 ## Run Single Instance (Local)
 
