@@ -37,3 +37,17 @@ class ChatMessage(BaseModel):
     username: str
     content: str
     timestamp: str
+
+class RoomDetail(Room):  # This extends your existing Room model
+    message_count: int = 0
+    last_activity: Optional[datetime] = None
+
+class RoomCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    
+    @validator('name')
+    def validate_name(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError('Room name cannot be empty')
+        return v
