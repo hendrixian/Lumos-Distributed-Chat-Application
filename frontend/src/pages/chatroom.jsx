@@ -387,6 +387,7 @@ export default function ChatWindow({
         <GroupInfo
           group={room}
           user={user}
+          token={token}
           onlineUsernames={presence.online_members}
           onClose={() => setShowRightPanel(false)}
           onAddMember={onAddMember}

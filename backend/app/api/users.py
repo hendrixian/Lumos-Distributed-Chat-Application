@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from app.api.auth import get_current_user
 from app.core.database import mongodb
 from app.core.image_utils import image_file_to_data_url
-from app.models.schemas import User
+from app.models.schemas import PublicUserProfile, PublicUserProfilesRequest, User
 
 router = APIRouter()
 
@@ -24,11 +24,54 @@ async def search_users(username: str, current_user: User = Depends(get_current_u
                 {"username": {"$ne": current_user.username}},
             ]
         },
-        {"username": 1, "_id": 0},
+        {"username": 1, "avatar_url": 1, "_id": 0},
     ).limit(10)
 
     results = await cursor.to_list(length=10)
     return results
+
+
+@router.post("/public/batch", response_model=list[PublicUserProfile])
+async def get_public_profiles_batch(
+    payload: PublicUserProfilesRequest,
+    current_user: User = Depends(get_current_user),
+):
+    del current_user  # Keep endpoint authenticated; requester identity not needed below.
+
+    usernames = []
+    seen = set()
+    for raw_username in payload.usernames:
+        username = (raw_username or "").strip()
+        if not username or username in seen:
+            continue
+        seen.add(username)
+        usernames.append(username)
+
+    if not usernames:
+        return []
+
+    users_col = mongodb.get_collection("users")
+    docs = await users_col.find(
+        {"username": {"$in": usernames}},
+        {"username": 1, "bio": 1, "avatar_url": 1, "_id": 0},
+    ).to_list(length=len(usernames))
+    docs_by_username = {doc.get("username"): doc for doc in docs}
+
+    # Preserve request order to keep frontend mapping deterministic.
+    ordered_profiles = []
+    for username in usernames:
+        doc = docs_by_username.get(username)
+        if not doc:
+            continue
+        ordered_profiles.append(
+            PublicUserProfile(
+                username=doc.get("username", username),
+                bio=doc.get("bio", ""),
+                avatar_url=doc.get("avatar_url", ""),
+            )
+        )
+
+    return ordered_profiles
 
 
 @router.get("/me", response_model=User)

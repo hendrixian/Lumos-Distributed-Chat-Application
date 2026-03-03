@@ -99,6 +99,7 @@ async def get_rooms(current_user: User = Depends(get_current_user)):
         List of all rooms with member counts
     """
     rooms = await room_repository.get_all_rooms()
+    users_collection = mongodb.get_collection("users")
     visible_rooms = []
 
     for room in rooms:
@@ -109,13 +110,28 @@ async def get_rooms(current_user: User = Depends(get_current_user)):
         if room_type == "dm" and current_user.username not in participants:
             continue
 
+        room_name = room["name"]
+        room_avatar_url = room.get("avatar_url", "")
+        if room_type == "dm":
+            other_username = next(
+                (username for username in participants if username != current_user.username),
+                None,
+            )
+            if other_username:
+                other_user = await users_collection.find_one(
+                    {"username": other_username},
+                    {"username": 1, "avatar_url": 1, "_id": 0},
+                )
+                room_name = (other_user or {}).get("username", other_username)
+                room_avatar_url = (other_user or {}).get("avatar_url", "")
+
         visible_rooms.append(
             Room(
                 id=room["id"],
-                name=room["name"],
+                name=room_name,
                 description=room.get("description", ""),
                 visibility=room.get("visibility", "public"),
-                avatar_url=room.get("avatar_url", ""),
+                avatar_url=room_avatar_url,
                 created_at=room["created_at"],
                 created_by=room["created_by"],
                 type=room_type,

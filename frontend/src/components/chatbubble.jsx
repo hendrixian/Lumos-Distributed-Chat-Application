@@ -1,4 +1,4 @@
-import { AlertCircle, Check, CheckCheck, Clock3, CornerUpLeft } from 'lucide-react';
+import { AlertCircle, Check, CheckCheck, CornerUpLeft } from 'lucide-react';
 
 export default function MessageBubble({
   msg,
@@ -18,7 +18,11 @@ export default function MessageBubble({
     );
   }
 
-  const status = msg.status || (msg.seen ? 'read' : 'delivered');
+  const readBy = Array.isArray(msg.read_by) ? msg.read_by : [];
+  const seenByRecipient = readBy.some(
+    (username) => username && username !== msg.username
+  );
+  const status = msg.status || (seenByRecipient ? 'read' : (msg.delivery_status || 'delivered'));
   const messageId = msg._id || msg.id;
 
   return (
@@ -102,9 +106,17 @@ export default function MessageBubble({
                 })
               : ''}
           </span>
-          {isOwn && status === 'read' && <CheckCheck size={14} />}
-          {isOwn && status === 'delivered' && <Check size={14} />}
-          {isOwn && status === 'sending' && <Clock3 size={14} />}
+          {isOwn && status === 'read' && (
+            <CheckCheck
+              size={14}
+              className="text-sky-200 drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] "  />
+          )}
+          {isOwn && status === 'delivered' && (
+            <CheckCheck size={14} className="text-white/75" />
+          )}
+          {isOwn && (status === 'sent' || status === 'sending') && (
+            <Check size={14} className="text-white/75" />
+          )}
           {isOwn && status === 'unsent' && (
             <span className="inline-flex items-center gap-1 text-red-200">
               <AlertCircle size={12} />

@@ -209,7 +209,14 @@ export default function Sidebar({
               {userResults.length === 0 && <p className="px-4 pb-3 text-sm text-gray-400">No matching users</p>}
               {userResults.map((item) => (
                 <div key={`user-${item.username}`} className="px-4 py-2 flex items-center justify-between hover:bg-gray-50">
-                  <span className="text-sm font-medium">{item.username}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <img
+                      src={item.avatar_url || soloDefaultAvatar}
+                      alt={item.username}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                    <span className="text-sm font-medium truncate">{item.username}</span>
+                  </div>
                   <button
                     className="inline-flex items-center gap-1 text-xs bg-blue-600 text-white px-2 py-1 rounded"
                     onClick={() => sendRequest(item.username)}

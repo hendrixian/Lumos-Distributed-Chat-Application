@@ -13,6 +13,16 @@ class User(BaseModel):
     bio: Optional[str] = ""
     avatar_url: Optional[str] = ""
 
+
+class PublicUserProfile(BaseModel):
+    username: str
+    bio: Optional[str] = ""
+    avatar_url: Optional[str] = ""
+
+
+class PublicUserProfilesRequest(BaseModel):
+    usernames: List[str]
+
 class Token(BaseModel):
     access_token: str
     token_type: str

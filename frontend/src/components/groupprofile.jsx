@@ -2,10 +2,12 @@ import { X, UserPlus, LogOut, Edit2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import groupDefaultAvatar from '../styles/images/group.png';
 import soloDefaultAvatar from '../styles/images/solo.png';
+import { API_URL } from '../config/endpoints.js';
 
 export default function GroupInfo({
   group,
   user,
+  token,
   onlineUsernames = [],
   onClose,
   onMessage,
@@ -27,6 +29,7 @@ export default function GroupInfo({
   const [removeGroupAvatar, setRemoveGroupAvatar] = useState(false);
   const [savingGroupProfile, setSavingGroupProfile] = useState(false);
   const [groupProfileError, setGroupProfileError] = useState('');
+  const [memberProfilesByUsername, setMemberProfilesByUsername] = useState({});
   const name = group?.name || '';
   const description = group?.description || '';
   const memberUsernames = group?.members || [];
@@ -35,11 +38,15 @@ export default function GroupInfo({
   const links = group?.links;
 
   const onlineSet = useMemo(() => new Set(onlineUsernames), [onlineUsernames]);
+  const memberListSignature = useMemo(
+    () => [...memberUsernames].sort().join('|'),
+    [memberUsernames]
+  );
 
   // Map usernames to objects (extend if more info is available)
   const members = memberUsernames.map((username) => ({
     username,
-    avatar: null,
+    avatar: memberProfilesByUsername[username]?.avatar_url || null,
     online: onlineSet.has(username),
     isAdmin: username === group?.created_by,
   }));
@@ -55,6 +62,44 @@ export default function GroupInfo({
     setRemoveGroupAvatar(false);
     setGroupProfileError('');
   }, [group?.id]);
+
+  useEffect(() => {
+    if (!group?.id || !token || memberUsernames.length === 0) {
+      setMemberProfilesByUsername({});
+      return;
+    }
+
+    let isMounted = true;
+    const fetchMemberProfiles = async () => {
+      try {
+        const res = await fetch(`${API_URL}/users/public/batch`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ usernames: memberUsernames }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isMounted || !Array.isArray(data)) return;
+
+        const profileMap = {};
+        data.forEach((item) => {
+          if (!item?.username) return;
+          profileMap[item.username] = item;
+        });
+        setMemberProfilesByUsername(profileMap);
+      } catch (err) {
+        console.error('Failed to fetch member profiles', err);
+      }
+    };
+
+    fetchMemberProfiles();
+    return () => {
+      isMounted = false;
+    };
+  }, [group?.id, token, memberListSignature]);
 
   if (!group) return null;
 

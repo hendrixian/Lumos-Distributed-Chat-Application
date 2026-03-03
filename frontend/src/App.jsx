@@ -579,8 +579,8 @@ export default function App() {
       timestamp: new Date().toISOString(),
       reply_to: replyTo,
       read_by: [],
-      delivery_status: 'pending',
-      status: 'sending',
+      delivery_status: 'sent',
+      status: 'sent',
     };
 
     setMessagesByRoom((prev) => {
