@@ -7,7 +7,6 @@ import {
   fetchDmBlockStatus,
   fetchRoomMessages,
   fetchRoomPresence,
-  fetchUserOnlineStatus,
   unblockDmUser,
 } from '../api/api.jsx';
 
@@ -48,7 +47,6 @@ export default function ChatWindow({
     blocked_by_other: false,
     other_username: '',
   });
-  const [dmPeerOnline, setDmPeerOnline] = useState(false);
 
   // Normalize messages once
   const normalizedMessages = useMemo(() => {
@@ -202,50 +200,6 @@ export default function ChatWindow({
     };
   }, [room?.id, room?.type, token, onAuthExpired]);
 
-  useEffect(() => {
-    if (!room?.id || room?.type !== 'dm' || !token) {
-      setDmPeerOnline(false);
-      return;
-    }
-
-    const peerUsername =
-      dmBlockStatus?.other_username ||
-      (Array.isArray(room.members)
-        ? room.members.find((username) => username !== user?.username) || ''
-        : '');
-    if (!peerUsername) {
-      setDmPeerOnline(false);
-      return;
-    }
-
-    let isMounted = true;
-    let timerId = null;
-
-    const refreshDmPeerOnline = async () => {
-      try {
-        const data = await fetchUserOnlineStatus(peerUsername, token);
-        if (isMounted) {
-          setDmPeerOnline(Boolean(data?.online));
-        }
-      } catch (err) {
-        if (err?.status === 401) {
-          if (timerId) clearInterval(timerId);
-          if (isMounted) onAuthExpired?.();
-          return;
-        }
-        console.error('Failed to fetch DM peer online status:', err);
-      }
-    };
-
-    refreshDmPeerOnline();
-    timerId = setInterval(refreshDmPeerOnline, 5000);
-
-    return () => {
-      isMounted = false;
-      if (timerId) clearInterval(timerId);
-    };
-  }, [room?.id, room?.type, room?.members, user?.username, token, dmBlockStatus?.other_username, onAuthExpired]);
-
   // Lazy load older messages
   const loadOlderMessages = async () => {
     if (!room?.id || loadingOlder || !hasMore || messages.length === 0)
@@ -344,6 +298,11 @@ export default function ChatWindow({
     (Array.isArray(room.members)
       ? room.members.find((username) => username !== user?.username) || ''
       : '');
+  const dmPeerOnline =
+    isDmRoom &&
+    Boolean(dmPeerUsername) &&
+    Array.isArray(presence.online_members) &&
+    presence.online_members.includes(dmPeerUsername);
   const blockedByYouInDm = isDmRoom && dmBlockStatus?.blocked_by_you;
   const blockedByOtherInDm = isDmRoom && dmBlockStatus?.blocked_by_other;
   const dmMessagingDisabled = blockedByYouInDm || blockedByOtherInDm;

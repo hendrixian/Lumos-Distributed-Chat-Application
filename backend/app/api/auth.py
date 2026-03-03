@@ -8,6 +8,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 import hashlib
 import re
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 from ..models.schemas import UserCreate, User, Token, TokenData
@@ -19,6 +20,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 # MongoDB collections
 USERS_COLLECTION = "users"
+SERVER_AUTH_SESSION_ID = str(uuid.uuid4())
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -65,7 +67,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
     
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "sid": SERVER_AUTH_SESSION_ID})
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
 
@@ -107,7 +109,10 @@ async def get_user_from_token(token: str, credentials_exception: Optional[HTTPEx
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         username: str = payload.get("sub")
+        sid: str = payload.get("sid")
         if username is None:
+            raise credentials_exception
+        if sid != SERVER_AUTH_SESSION_ID:
             raise credentials_exception
         token_data = TokenData(username=username)
     except JWTError:

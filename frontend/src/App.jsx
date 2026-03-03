@@ -9,6 +9,7 @@ const TZ_SUFFIX_RE = /(Z|[+-]\d{2}:\d{2})$/;
 const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AUTH_TOKEN_STORAGE_KEY = 'lumos_auth_token';
 const AUTH_USER_STORAGE_KEY = 'lumos_auth_user';
+const LAST_ROOM_ID_STORAGE_KEY = 'lumos_last_room_id';
 
 const normalizeTimestamp = (rawTimestamp) => {
   if (!rawTimestamp) return null;
@@ -113,10 +114,19 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!token || user) return;
+    try {
+      if (currentRoom?.id) localStorage.setItem(LAST_ROOM_ID_STORAGE_KEY, currentRoom.id);
+      else localStorage.removeItem(LAST_ROOM_ID_STORAGE_KEY);
+    } catch (_err) {
+      // Ignore storage errors.
+    }
+  }, [currentRoom?.id]);
+
+  useEffect(() => {
+    if (!token) return;
 
     let cancelled = false;
-    const restoreUser = async () => {
+    const validateToken = async () => {
       try {
         const res = await fetch(`${API_URL}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -139,11 +149,11 @@ export default function App() {
       }
     };
 
-    restoreUser();
+    validateToken();
     return () => {
       cancelled = true;
     };
-  }, [token, user]);
+  }, [token]);
 
   const closeChatSocket = (reason = 'silent_disconnect') => {
     if (!ws.current) return;
@@ -324,12 +334,28 @@ export default function App() {
         headers: { Authorization: `Bearer ${activeToken}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.detail || `Failed to fetch rooms (${res.status})`);
+      if (!res.ok) {
+        if (res.status === 401) {
+          setToken(null);
+          setUser(null);
+          return [];
+        }
+        throw new Error(data?.detail || `Failed to fetch rooms (${res.status})`);
+      }
       const roomList = Array.isArray(data) ? data : [];
       setRooms(roomList);
       setCurrentRoom((prev) => {
-        if (!prev?.id) return prev;
-        return roomList.find((room) => room.id === prev.id) || prev;
+        const previousRoomId = prev?.id || '';
+        const storedRoomId = (() => {
+          try {
+            return localStorage.getItem(LAST_ROOM_ID_STORAGE_KEY) || '';
+          } catch (_err) {
+            return '';
+          }
+        })();
+        const preferredRoomId = previousRoomId || storedRoomId;
+        if (!preferredRoomId) return null;
+        return roomList.find((room) => room.id === preferredRoomId) || null;
       });
       return roomList;
     } catch (err) {
@@ -347,8 +373,10 @@ export default function App() {
       return;
     }
 
+    if (!user) return;
+
     void fetchRooms(token);
-  }, [token]);
+  }, [token, user]);
 
   const updateUserProfile = async (payload = {}) => {
     const hasBio = Object.prototype.hasOwnProperty.call(payload, 'bio');
@@ -752,6 +780,7 @@ export default function App() {
     setCurrentRoom(null);
     setUsername('');
     setEmail('');
+    setPassword('');
     setConfirmPassword('');
     setShowRequestsPage(false);
     setNotificationBadgeCount(0);
@@ -759,9 +788,11 @@ export default function App() {
     try {
       localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
       localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+      localStorage.removeItem(LAST_ROOM_ID_STORAGE_KEY);
     } catch (_err) {
       // Ignore storage errors.
     }
+
   };
 
   if (!user) {
