@@ -694,6 +694,7 @@ export default function App() {
             setNewMessage={setNewMessage}
             onSend={sendMessage}
             onMarkRead={markMessagesRead}
+            onAuthExpired={logout}
             onLeave={leaveRoom}
             onAddMember={addMemberToRoom}
             onUpdateGroupProfile={updateGroupProfile}

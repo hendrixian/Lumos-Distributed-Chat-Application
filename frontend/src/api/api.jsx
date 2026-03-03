@@ -66,7 +66,13 @@ export async function fetchRoomPresence(roomId, token) {
   const res = await fetch(`${API_URL}/rooms/${roomId}/presence`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error('Failed to fetch room presence');
+  if (!res.ok) {
+    const error = new Error(
+      res.status === 401 ? 'Unauthorized: session expired' : 'Failed to fetch room presence'
+    );
+    error.status = res.status;
+    throw error;
+  }
 
   return res.json();
 }

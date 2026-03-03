@@ -14,6 +14,7 @@ export default function ChatWindow({
   setNewMessage,
   onSend,
   onMarkRead,
+  onAuthExpired,
   onLeave,
   onAddMember,
   onUpdateGroupProfile,
@@ -111,6 +112,7 @@ export default function ChatWindow({
     }
 
     let isMounted = true;
+    let timerId = null;
 
     const refreshPresence = async () => {
       try {
@@ -124,18 +126,26 @@ export default function ChatWindow({
           });
         }
       } catch (err) {
+        if (err?.status === 401) {
+          if (timerId) clearInterval(timerId);
+          if (isMounted) {
+            setPresence({ online_count: 0, online_members: [] });
+            onAuthExpired?.();
+          }
+          return;
+        }
         console.error('Failed to fetch room presence:', err);
       }
     };
 
     refreshPresence();
-    const timer = setInterval(refreshPresence, 5000);
+    timerId = setInterval(refreshPresence, 5000);
 
     return () => {
       isMounted = false;
-      clearInterval(timer);
+      if (timerId) clearInterval(timerId);
     };
-  }, [room?.id, token]);
+  }, [room?.id, token, onAuthExpired]);
 
   // Lazy load older messages
   const loadOlderMessages = async () => {

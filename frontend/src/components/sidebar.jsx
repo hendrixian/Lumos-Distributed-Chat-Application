@@ -70,8 +70,22 @@ export default function Sidebar({
   }, [search, token]);
 
   const filteredRooms = useMemo(() => {
-    return rooms.filter((room) => room.name.toLowerCase().includes(search.toLowerCase()));
-  }, [rooms, search]);
+    const query = search.trim().toLowerCase();
+    return rooms.filter((room) => {
+      const roomName = String(room.name || '').toLowerCase();
+      if (!roomName.includes(query)) return false;
+
+      const isGroupRoom = room.type !== 'dm';
+      const isPrivateRoom = room.visibility === 'private';
+      const isMember = Array.isArray(room.members) && room.members.includes(user?.username);
+
+      // Hide private group rooms from non-members in the default chat list,
+      // but allow discovery when the user actively searches.
+      if (isGroupRoom && isPrivateRoom && !isMember && !query) return false;
+
+      return true;
+    });
+  }, [rooms, search, user?.username]);
 
   const sendRequest = async (targetUsername) => {
     setSearchError('');
