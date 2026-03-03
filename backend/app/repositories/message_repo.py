@@ -75,5 +75,10 @@ class MessageRepository:
         return result.deleted_count
 
 
+    async def count_room_messages(self, room_id: str) -> int:
+        """Count messages in a room"""
+        return await self.collection.count_documents({"room_id": room_id})
+
+
 # Global repository instance
 message_repository = MessageRepository()
