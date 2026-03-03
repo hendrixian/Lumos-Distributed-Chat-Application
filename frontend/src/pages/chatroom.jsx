@@ -2,7 +2,13 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import { Send, Users, ArrowDown, Search, PanelRight, X } from 'lucide-react';
 import MessageBubble from '../components/chatbubble.jsx';
 import GroupInfo from '../components/groupprofile.jsx';
-import { fetchRoomMessages, fetchRoomPresence } from '../api/api.jsx';
+import {
+  blockDmUser,
+  fetchDmBlockStatus,
+  fetchRoomMessages,
+  fetchRoomPresence,
+  fetchUserOnlineStatus,
+} from '../api/api.jsx';
 
 export default function ChatWindow({
   user,
@@ -36,6 +42,12 @@ export default function ChatWindow({
     online_count: 0,
     online_members: [],
   });
+  const [dmBlockStatus, setDmBlockStatus] = useState({
+    blocked_by_you: false,
+    blocked_by_other: false,
+    other_username: '',
+  });
+  const [dmPeerOnline, setDmPeerOnline] = useState(false);
 
   // Normalize messages once
   const normalizedMessages = useMemo(() => {
@@ -147,6 +159,92 @@ export default function ChatWindow({
     };
   }, [room?.id, token, onAuthExpired]);
 
+  useEffect(() => {
+    if (!room?.id || room?.type !== 'dm' || !token) {
+      setDmBlockStatus({
+        blocked_by_you: false,
+        blocked_by_other: false,
+        other_username: '',
+      });
+      return;
+    }
+
+    let isMounted = true;
+    let timerId = null;
+
+    const refreshDmBlockStatus = async () => {
+      try {
+        const data = await fetchDmBlockStatus(room.id, token);
+        if (isMounted) {
+          setDmBlockStatus({
+            blocked_by_you: Boolean(data?.blocked_by_you),
+            blocked_by_other: Boolean(data?.blocked_by_other),
+            other_username: data?.other_username || '',
+          });
+        }
+      } catch (err) {
+        if (err?.status === 401) {
+          if (timerId) clearInterval(timerId);
+          if (isMounted) onAuthExpired?.();
+          return;
+        }
+        console.error('Failed to fetch DM block status:', err);
+      }
+    };
+
+    refreshDmBlockStatus();
+    timerId = setInterval(refreshDmBlockStatus, 5000);
+
+    return () => {
+      isMounted = false;
+      if (timerId) clearInterval(timerId);
+    };
+  }, [room?.id, room?.type, token, onAuthExpired]);
+
+  useEffect(() => {
+    if (!room?.id || room?.type !== 'dm' || !token) {
+      setDmPeerOnline(false);
+      return;
+    }
+
+    const peerUsername =
+      dmBlockStatus?.other_username ||
+      (Array.isArray(room.members)
+        ? room.members.find((username) => username !== user?.username) || ''
+        : '');
+    if (!peerUsername) {
+      setDmPeerOnline(false);
+      return;
+    }
+
+    let isMounted = true;
+    let timerId = null;
+
+    const refreshDmPeerOnline = async () => {
+      try {
+        const data = await fetchUserOnlineStatus(peerUsername, token);
+        if (isMounted) {
+          setDmPeerOnline(Boolean(data?.online));
+        }
+      } catch (err) {
+        if (err?.status === 401) {
+          if (timerId) clearInterval(timerId);
+          if (isMounted) onAuthExpired?.();
+          return;
+        }
+        console.error('Failed to fetch DM peer online status:', err);
+      }
+    };
+
+    refreshDmPeerOnline();
+    timerId = setInterval(refreshDmPeerOnline, 5000);
+
+    return () => {
+      isMounted = false;
+      if (timerId) clearInterval(timerId);
+    };
+  }, [room?.id, room?.type, room?.members, user?.username, token, dmBlockStatus?.other_username, onAuthExpired]);
+
   // Lazy load older messages
   const loadOlderMessages = async () => {
     if (!room?.id || loadingOlder || !hasMore || messages.length === 0)
@@ -214,6 +312,7 @@ export default function ChatWindow({
 
   const handleSend = () => {
     if (!newMessage.trim()) return;
+    if (room?.type === 'dm' && dmBlockStatus?.blocked_by_other) return;
 
     onSend?.({
       content: newMessage,
@@ -237,6 +336,33 @@ export default function ChatWindow({
 
   const memberCount = room.members?.length ?? 0;
   const onlineCount = presence.online_count ?? 0;
+  const isDmRoom = room?.type === 'dm';
+  const dmPeerUsername =
+    dmBlockStatus?.other_username ||
+    (Array.isArray(room.members)
+      ? room.members.find((username) => username !== user?.username) || ''
+      : '');
+  const blockedByOtherInDm = isDmRoom && dmBlockStatus?.blocked_by_other;
+
+  const handleBlockDm = async () => {
+    if (!room?.id || room?.type !== 'dm') return false;
+    if (dmBlockStatus?.blocked_by_you) return true;
+    if (!window.confirm(`Block ${dmPeerUsername || 'this user'}?`)) return false;
+
+    try {
+      await blockDmUser(room.id, token);
+      const updatedStatus = await fetchDmBlockStatus(room.id, token);
+      setDmBlockStatus({
+        blocked_by_you: Boolean(updatedStatus?.blocked_by_you),
+        blocked_by_other: Boolean(updatedStatus?.blocked_by_other),
+        other_username: updatedStatus?.other_username || dmPeerUsername || '',
+      });
+      return true;
+    } catch (err) {
+      window.alert(err?.message || 'Failed to block user');
+      return false;
+    }
+  };
 
   return (
     <div className="flex-1 flex relative overflow-hidden">
@@ -274,8 +400,11 @@ export default function ChatWindow({
                   {room.name}
                 </h2>
                 <span className="text-xs text-gray-500">
-                  {memberCount} member{memberCount !== 1 ? 's' : ''},{' '}
-                  {onlineCount} online
+                  {isDmRoom
+                    ? dmPeerOnline
+                      ? 'Online'
+                      : 'Offline'
+                    : `${memberCount} member${memberCount !== 1 ? 's' : ''}, ${onlineCount} online`}
                 </span>
               </>
             )}
@@ -350,41 +479,49 @@ export default function ChatWindow({
 
         {/* Reply + Input */}
         <div className="p-4 border-t flex flex-col gap-2">
-          {replyTo && (
-            <div className="flex justify-between bg-gray-100 border-l-4 border-blue-500 px-3 py-2 rounded">
-              <div className="flex-1 overflow-hidden">
-                <p className="text-xs font-semibold truncate">
-                  {replyTo.username}
-                </p>
-                <p className="text-xs text-gray-600 truncate">
-                  {replyTo.content}
-                </p>
-              </div>
-              <button
-                onClick={() => setReplyTo(null)}
-                className="text-gray-500 hover:text-gray-800"
-              >
-                <X size={16} />
-              </button>
+          {blockedByOtherInDm ? (
+            <div className="text-center text-sm font-medium text-red-600 bg-red-50 border border-red-100 rounded-lg py-3">
+              You have been blocked
             </div>
-          )}
+          ) : (
+            <>
+              {replyTo && (
+                <div className="flex justify-between bg-gray-100 border-l-4 border-blue-500 px-3 py-2 rounded">
+                  <div className="flex-1 overflow-hidden">
+                    <p className="text-xs font-semibold truncate">
+                      {replyTo.username}
+                    </p>
+                    <p className="text-xs text-gray-600 truncate">
+                      {replyTo.content}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setReplyTo(null)}
+                    className="text-gray-500 hover:text-gray-800"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
 
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Type a message..."
-            />
-            <button
-              onClick={handleSend}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              <Send />
-            </button>
-          </div>
+              <div className="flex gap-2">
+                <input
+                  ref={inputRef}
+                  className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                  placeholder="Type a message..."
+                />
+                <button
+                  onClick={handleSend}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  <Send />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -398,9 +535,12 @@ export default function ChatWindow({
           group={room}
           user={user}
           token={token}
+          dmBlockStatus={dmBlockStatus}
+          dmPeerOnline={dmPeerOnline}
           onlineUsernames={presence.online_members}
           onClose={() => setShowRightPanel(false)}
           onAddMember={onAddMember}
+          onBlockDmUser={handleBlockDm}
           onUpdateGroupProfile={onUpdateGroupProfile}
           onLeaveRoom={onLeave}
         />

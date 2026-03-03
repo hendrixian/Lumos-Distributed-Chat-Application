@@ -26,4 +26,7 @@ class ConnectionManager:
             for ws in stale:
                 self.disconnect(username, ws)
 
+    def is_online(self, username: str) -> bool:
+        return bool(self.active_connections.get(username))
+
 manager = ConnectionManager()

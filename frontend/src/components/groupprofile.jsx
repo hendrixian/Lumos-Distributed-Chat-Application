@@ -8,10 +8,13 @@ export default function GroupInfo({
   group,
   user,
   token,
+  dmBlockStatus,
+  dmPeerOnline = false,
   onlineUsernames = [],
   onClose,
   onMessage,
   onAddMember,
+  onBlockDmUser,
   onUpdateGroupProfile,
   onLeaveRoom,
 }) {
@@ -110,6 +113,14 @@ export default function GroupInfo({
   const filteredMembers = members.filter((m) =>
     m.username.toLowerCase().includes(searchText.toLowerCase())
   );
+  const isDmRoom = group?.type === 'dm';
+  const dmPeerUsername =
+    dmBlockStatus?.other_username ||
+    memberUsernames.find((username) => username !== user?.username) ||
+    '';
+  const dmPeerIsOnline = isDmRoom ? Boolean(dmPeerOnline) : dmPeerUsername ? onlineSet.has(dmPeerUsername) : false;
+  const dmBlockedByYou = Boolean(dmBlockStatus?.blocked_by_you);
+  const dmBlockedByOther = Boolean(dmBlockStatus?.blocked_by_other);
   const isOwner = group?.created_by === user?.username;
   const canEditGroup = isOwner && group?.type !== 'dm';
 
@@ -208,9 +219,11 @@ export default function GroupInfo({
                 <p className="text-sm text-gray-500 mt-1 text-center px-2">
                   {description?.trim() || 'No description available.'}
                 </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  Visibility: {group?.visibility === 'private' ? 'Private' : 'Public'}
-                </p>
+                {!isDmRoom && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Visibility: {group?.visibility === 'private' ? 'Private' : 'Public'}
+                  </p>
+                )}
               </>
             ) : (
               <div className="w-full mt-2">
@@ -247,7 +260,11 @@ export default function GroupInfo({
             )}
 
             <p className="text-sm text-gray-500">
-              {totalMembers} members, {onlineMembers} online
+              {isDmRoom
+                ? dmPeerIsOnline
+                  ? 'Online'
+                  : 'Offline'
+                : `${totalMembers} members, ${onlineMembers} online`}
             </p>
 
             {groupProfileError && (
@@ -290,7 +307,24 @@ export default function GroupInfo({
               </div>
             )}
 
-            {onLeaveRoom && (
+            {isDmRoom && onBlockDmUser && (
+              <button
+                onClick={() => onBlockDmUser(group)}
+                disabled={dmBlockedByYou || !dmPeerUsername}
+                className="mt-4 w-full inline-flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:bg-red-300 disabled:cursor-not-allowed"
+              >
+                <LogOut size={16} />
+                {dmBlockedByYou
+                  ? `Blocked ${dmPeerUsername || 'User'}`
+                  : `Block ${dmPeerUsername || 'User'}`}
+              </button>
+            )}
+
+            {isDmRoom && dmBlockedByOther && (
+              <p className="mt-2 text-xs text-red-600">You have been blocked</p>
+            )}
+
+            {!isDmRoom && onLeaveRoom && (
               <button
                 onClick={() => onLeaveRoom(group)}
                 className="mt-4 w-full inline-flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
@@ -301,77 +335,81 @@ export default function GroupInfo({
             )}
           </div>
 
-          {/* Media / Files / Links */}
-          <div className="p-6 border-b flex justify-between text-center">
-            <div>
-              <p className="font-semibold">{images || 0}</p>
-              <p className="text-xs text-gray-500">Images</p>
-            </div>
-            <div>
-              <p className="font-semibold">{files || 0}</p>
-              <p className="text-xs text-gray-500">Files</p>
-            </div>
-            <div>
-              <p className="font-semibold">{links || 0}</p>
-              <p className="text-xs text-gray-500">Links</p>
-            </div>
-          </div>
-
-          {/* Members List with Search */}
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold">Members</h3>
-                {isOwner && (
-                  <button
-                    onClick={() => onAddMember?.(group)}
-                    className="inline-flex items-center justify-center p-1.5 text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
-                    title="Add member"
-                  >
-                    <UserPlus size={14} />
-                  </button>
-                )}
+          {!isDmRoom && (
+            <>
+              {/* Media / Files / Links */}
+              <div className="p-6 border-b flex justify-between text-center">
+                <div>
+                  <p className="font-semibold">{images || 0}</p>
+                  <p className="text-xs text-gray-500">Images</p>
+                </div>
+                <div>
+                  <p className="font-semibold">{files || 0}</p>
+                  <p className="text-xs text-gray-500">Files</p>
+                </div>
+                <div>
+                  <p className="font-semibold">{links || 0}</p>
+                  <p className="text-xs text-gray-500">Links</p>
+                </div>
               </div>
-              <input
-                type="text"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Search..."
-                className="ml-3 px-2 py-1 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
 
-            <div className="space-y-3">
-              {filteredMembers.map((member) => (
-                <div
-                  key={member.username}
-                  className="flex items-center gap-3 cursor-pointer hover:bg-gray-100 rounded-md p-1"
-                  onClick={() => setSelectedMemberUsername(member.username)}
-                >
-                  <div className="relative">
-                    <img
-                      src={member.avatar || soloDefaultAvatar}
-                      alt={member.username}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                    {member.online && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+              {/* Members List with Search */}
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">Members</h3>
+                    {isOwner && (
+                      <button
+                        onClick={() => onAddMember?.(group)}
+                        className="inline-flex items-center justify-center p-1.5 text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
+                        title="Add member"
+                      >
+                        <UserPlus size={14} />
+                      </button>
                     )}
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{member.username}</p>
-                      {member.isAdmin && (
-                        <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[11px] font-semibold">
-                          Admin
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search..."
+                    className="ml-3 px-2 py-1 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
+
+                <div className="space-y-3">
+                  {filteredMembers.map((member) => (
+                    <div
+                      key={member.username}
+                      className="flex items-center gap-3 cursor-pointer hover:bg-gray-100 rounded-md p-1"
+                      onClick={() => setSelectedMemberUsername(member.username)}
+                    >
+                      <div className="relative">
+                        <img
+                          src={member.avatar || soloDefaultAvatar}
+                          alt={member.username}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                        {member.online && (
+                          <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{member.username}</p>
+                          {member.isAdmin && (
+                            <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[11px] font-semibold">
+                              Admin
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

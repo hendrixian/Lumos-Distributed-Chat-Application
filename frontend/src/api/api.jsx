@@ -18,6 +18,12 @@ function deriveMessageStatus(message) {
   return message?.delivery_status || 'delivered';
 }
 
+function createHttpError(status, fallbackMessage) {
+  const error = new Error(status === 401 ? 'Unauthorized: session expired' : fallbackMessage);
+  error.status = status;
+  return error;
+}
+
 // =====================================================
 // ===================== MESSAGES ======================
 // =====================================================
@@ -67,11 +73,55 @@ export async function fetchRoomPresence(roomId, token) {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {
-    const error = new Error(
-      res.status === 401 ? 'Unauthorized: session expired' : 'Failed to fetch room presence'
-    );
-    error.status = res.status;
-    throw error;
+    throw createHttpError(res.status, 'Failed to fetch room presence');
+  }
+
+  return res.json();
+}
+
+export async function fetchDmBlockStatus(roomId, token) {
+  if (!roomId) {
+    return { blocked_by_you: false, blocked_by_other: false, other_username: '' };
+  }
+
+  const res = await fetch(`${API_URL}/contacts/dm/${roomId}/block-status`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    throw createHttpError(res.status, 'Failed to fetch DM block status');
+  }
+
+  return res.json();
+}
+
+export async function blockDmUser(roomId, token) {
+  const res = await fetch(`${API_URL}/contacts/dm/${roomId}/block`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let detail = 'Failed to block user';
+    try {
+      const data = await res.json();
+      detail = data?.detail || detail;
+    } catch (_err) {
+      // Keep fallback detail.
+    }
+    throw createHttpError(res.status, detail);
+  }
+
+  return res.json();
+}
+
+export async function fetchUserOnlineStatus(username, token) {
+  const targetUsername = String(username || '').trim();
+  if (!targetUsername) return { username: '', online: false };
+
+  const res = await fetch(`${API_URL}/users/online/${encodeURIComponent(targetUsername)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    throw createHttpError(res.status, 'Failed to fetch user online status');
   }
 
   return res.json();

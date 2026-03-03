@@ -12,7 +12,7 @@ from typing import Dict, List
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ..core.config import settings
-from ..core.database import redis_cache
+from ..core.database import mongodb, redis_cache
 from ..repositories.message_repo import message_repository
 from ..repositories.room_repo import room_repository
 from ..services.pubsub import pubsub_service
@@ -463,6 +463,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                 content = (message_data.get("content") or "").strip()
                 if not content:
                     continue
+
+                if room_type == "dm":
+                    dm_blocks_col = mongodb.get_collection("dm_blocks")
+                    blocked_doc = await dm_blocks_col.find_one(
+                        {"room_id": room_id, "blocked": username}
+                    )
+                    if blocked_doc:
+                        # Blocked users cannot send messages in this DM.
+                        continue
 
                 print(f"[db] save message user={username} room={room_id}")
 

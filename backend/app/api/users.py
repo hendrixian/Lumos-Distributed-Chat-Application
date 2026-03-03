@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from app.api.auth import get_current_user
 from app.core.database import mongodb
 from app.core.image_utils import image_file_to_data_url
+from app.core.ws_manager import manager as notification_ws_manager
 from app.models.schemas import PublicUserProfile, PublicUserProfilesRequest, User
 
 router = APIRouter()
@@ -72,6 +73,28 @@ async def get_public_profiles_batch(
         )
 
     return ordered_profiles
+
+
+@router.get("/online/{username}")
+async def get_user_online_status(
+    username: str,
+    current_user: User = Depends(get_current_user),
+):
+    del current_user
+
+    target_username = (username or "").strip()
+    if not target_username:
+        raise HTTPException(status_code=400, detail="username is required")
+
+    users_col = mongodb.get_collection("users")
+    target_user = await users_col.find_one({"username": target_username}, {"_id": 1})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "username": target_username,
+        "online": notification_ws_manager.is_online(target_username),
+    }
 
 
 @router.get("/me", response_model=User)

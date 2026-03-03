@@ -84,6 +84,7 @@ async def ensure_contact_indexes() -> None:
     room_join_requests_col = mongodb.get_collection("room_join_requests")
     notifications_col = mongodb.get_collection("notifications")
     rooms_col = mongodb.get_collection("rooms")
+    dm_blocks_col = mongodb.get_collection("dm_blocks")
 
     await requests_col.create_index(
         [("type", 1), ("from_username", 1), ("to_username", 1), ("status", 1)]
@@ -102,6 +103,86 @@ async def ensure_contact_indexes() -> None:
     )
     await notifications_col.create_index([("username", 1), ("created_at", -1)])
     await rooms_col.create_index([("type", 1), ("participants_key", 1)])
+    await dm_blocks_col.create_index([("room_id", 1)], unique=True)
+    await dm_blocks_col.create_index([("blocker", 1), ("blocked", 1)])
+    await dm_blocks_col.create_index([("blocked", 1)])
+
+
+async def _get_dm_room_for_user(room_id: str, username: str) -> tuple[Dict[str, Any], str]:
+    rooms_col = mongodb.get_collection("rooms")
+    room = await rooms_col.find_one({"id": room_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.get("type") != "dm":
+        raise HTTPException(status_code=400, detail="This endpoint is for DM rooms only")
+
+    participants = room.get("participants", [])
+    if username not in participants:
+        raise HTTPException(status_code=403, detail="Not authorized to access this DM")
+
+    other_username = next((item for item in participants if item != username), None)
+    if not other_username:
+        raise HTTPException(status_code=400, detail="Invalid DM participants")
+
+    return room, other_username
+
+
+@router.get("/dm/{room_id}/block-status")
+async def get_dm_block_status(
+    room_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    _, other_username = await _get_dm_room_for_user(room_id, current_user.username)
+    dm_blocks_col = mongodb.get_collection("dm_blocks")
+    block_doc = await dm_blocks_col.find_one({"room_id": room_id})
+
+    blocked_by_you = bool(
+        block_doc
+        and block_doc.get("blocker") == current_user.username
+        and block_doc.get("blocked") == other_username
+    )
+    blocked_by_other = bool(
+        block_doc
+        and block_doc.get("blocker") == other_username
+        and block_doc.get("blocked") == current_user.username
+    )
+
+    return {
+        "room_id": room_id,
+        "other_username": other_username,
+        "blocked_by_you": blocked_by_you,
+        "blocked_by_other": blocked_by_other,
+    }
+
+
+@router.post("/dm/{room_id}/block")
+async def block_dm_user(
+    room_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    _, other_username = await _get_dm_room_for_user(room_id, current_user.username)
+    dm_blocks_col = mongodb.get_collection("dm_blocks")
+
+    await dm_blocks_col.update_one(
+        {"room_id": room_id},
+        {
+            "$set": {
+                "room_id": room_id,
+                "blocker": current_user.username,
+                "blocked": other_username,
+                "participants_key": _participants_key(current_user.username, other_username),
+                "updated_at": datetime.utcnow(),
+            },
+            "$setOnInsert": {"created_at": datetime.utcnow()},
+        },
+        upsert=True,
+    )
+
+    return {
+        "message": f"Blocked {other_username}",
+        "room_id": room_id,
+        "blocked_username": other_username,
+    }
 
 
 @router.post("/add")
