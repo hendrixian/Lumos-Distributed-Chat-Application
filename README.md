@@ -1,92 +1,109 @@
-# Distributed Chat Application
+# Lumos Chat
 
-A real-time chat application built with FastAPI, React, MongoDB, and Redis, designed for horizontal scaling and persistent messaging.
+Lumos is a real-time chat app built with FastAPI, React, MongoDB, and Redis.
+It supports group rooms, DM rooms, read receipts, profile/group avatars, and distributed message fan-out across backend instances.
 
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+## What Is Implemented
 
-## Features
+### Authentication and Session
+- Register and login with JWT.
+- Register validation:
+  - email format check
+  - username already taken check
+  - password and confirm password must match
+- Login validation:
+  - username and password are required
+  - invalid credentials are rejected
+- Frontend persists auth session in `localStorage`, so refresh (`Ctrl+R`) does not force logout if token is still valid.
 
-### Chat and Rooms
-- JWT authentication (register/login)
-- Public room creation and room membership management
-- Real-time messaging over WebSocket
-- Message persistence in MongoDB
-- Room presence (`members` + `online`)
-- Users stay in a room until they explicitly click **Leave Room**
-- Join/leave system messages only on intentional membership changes
+### Contacts and DM
+- Send/accept/reject contact requests.
+- DM room is created when contact request is accepted.
+- DM block system:
+  - `Block <user>`
+  - `Unblock <user>`
+  - when blocked, messaging is disabled in both directions for that DM
+- Block status endpoint for UI state.
 
-### Profile and Group Customization
-- User profile editing:
-  - Profile photo upload/remove
-  - Bio update
-- Group (room) editing by room creator/admin:
-  - Group photo upload/remove
-  - Group description update
-- Admin badge shown in group member list
+### Group Rooms
+- Create public/private groups.
+- Private groups can be requested to join.
+- Room creator can:
+  - add members
+  - edit group description
+  - edit group visibility
+  - upload/remove group avatar
+- Members remain in room until explicit leave.
 
-### UX Improvements
-- Faster login transition (non-blocking post-login hydration)
-- Loading animation during login/register instead of a frozen screen
+### Messaging
+- WebSocket realtime chat.
+- MongoDB message persistence.
+- Reply-to message support.
+- Read receipts:
+  - sender sees `delivered` (double check)
+  - sender sees `read` (highlighted double check) when recipient reads
+- Optimistic send status:
+  - `sent`, `delivered`, `read`, `unsent`
+- Lazy loading older messages via HTTP pagination.
 
-### Distributed Architecture
-- Redis Pub/Sub for multi-instance message fan-out
-- Redis-backed global room presence (online users across devices/instances)
-- MongoDB for durable storage
-- Ready for load-balanced horizontal scaling
+### Profile and Presence
+- User profile update (`bio`, avatar upload/remove).
+- Default avatars:
+  - group fallback image
+  - user fallback image
+- Room presence endpoint for online counts.
+- DM header online/offline status.
 
-## Tech Stack
+### Distributed Runtime
+- Redis Pub/Sub for cross-instance message propagation.
+- Redis-backed room presence heartbeat/TTL.
+- MongoDB as shared durable store.
+
+## Stack
 
 ### Backend
 - FastAPI
-- Motor (async MongoDB driver)
+- Motor (MongoDB async driver)
 - Redis
 - WebSockets
-- JWT (python-jose)
+- python-jose (JWT)
+- Pydantic v2
 
 ### Frontend
-- React
+- React + Vite
 - Tailwind CSS
-- Lucide React
+- lucide-react
 
-## Quick Start
+## Project Structure
 
-## 1) Prerequisites
+```text
+backend/
+  app/
+    api/
+    core/
+    repositories/
+    services/
+    websocket/
+frontend/
+  src/
+    components/
+    pages/
+    api/
+README.md
+CODE_ARCHITECTURE.md
+DISTRIBUTED_SETUP.md
+```
+
+## Prerequisites
+
 - Python 3.10+
 - Node.js 18+
-- MongoDB running
-- Redis running
-
-## 2) Backend Setup
-```bash
-cd backend
-python -m venv venv
-
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-# source venv/bin/activate
-
-pip install -r ../requirements.txt
-python -m uvicorn app.main:app --reload --port 8002
-```
-
-## 3) Frontend Setup
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## 4) Open App
-- Frontend: Vite default URL (usually `http://localhost:5173`)
-- Backend API docs: `http://localhost:8002/docs`
+- MongoDB
+- Redis
 
 ## Configuration
 
-Backend reads environment variables from `backend/.env`:
+Create `backend/.env`:
 
 ```env
 SECRET_KEY=change-me
@@ -96,84 +113,142 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 MONGODB_URL=mongodb+srv://<username>:<password>@chatapp.k7wrdrd.mongodb.net/chatapp?retryWrites=true&w=majority&appName=chatapp
 MONGODB_DB_NAME=chatapp
 
-
 REDIS_HOST=redis-10419.c1.ap-southeast-1-1.ec2.cloud.redislabs.com
 REDIS_PORT=6379
-REDIS_DB=0
 REDIS_PASSWORD=
+REDIS_DB=0
 
 PRESENCE_HEARTBEAT_INTERVAL_SECONDS=10
 PRESENCE_TTL_SECONDS=30
 ```
 
-For multi-device/LAN usage, set frontend endpoint env vars in `frontend/.env`:
+Optional frontend overrides in `frontend/.env`:
 
 ```env
-VITE_API_URL=http://<your-backend-host>:8002
-VITE_WS_URL=ws://<your-backend-host>:8002
+VITE_API_URL=http://localhost:8002
+VITE_WS_URL=ws://localhost:8002
 ```
 
-If these vars are not set, frontend now auto-uses the current browser host with backend port `8002`.
+If not provided, frontend auto-uses current browser host and backend port `8002`.
 
-## MongoDB Notes (Important)
+## Local Development
 
-No manual MongoDB migration is required for the new profile/group customization features.
+### 1) Install Backend Dependencies
 
-- New optional fields are added automatically when users/rooms are updated:
-  - `users.bio`
-  - `users.avatar_url`
-  - `rooms.avatar_url`
-- Existing documents without these fields still work (code uses defaults).
+```bash
+cd backend
+python -m venv venv
+```
 
-## Image Upload Rules
+Windows:
 
-- Allowed types: PNG, JPEG, WEBP, GIF
-- Max file size: 2 MB
-- Current storage format: Base64 data URL in MongoDB
+```bash
+venv\Scripts\activate
+```
 
-## Key API Endpoints
+Linux/macOS:
+
+```bash
+source venv/bin/activate
+```
+
+Then install:
+
+```bash
+pip install -r ../requirements.txt
+```
+
+### 2) Start Backend
+
+```bash
+cd backend
+python -m uvicorn app.main:app --reload --port 8002
+```
+
+### 3) Start Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### 4) Open
+
+- App: `http://localhost:5173`
+- OpenAPI docs: `http://localhost:8002/docs`
+
+## API Overview
 
 ### Auth
 - `POST /auth/register`
 - `POST /auth/login`
 - `GET /auth/me`
 
-### User Profile
+### Users
+- `GET /users/search?username=...`
+- `POST /users/public/batch`
+- `GET /users/online/{username}`
 - `GET /users/me`
-- `PATCH /users/me` (`bio`, `avatar`, `remove_avatar`)
+- `PATCH /users/me`
+
+### Contacts
+- `POST /contacts/add`
+- `GET /contacts/requests`
+- `POST /contacts/respond`
+- `GET /contacts/notifications`
+- `POST /contacts/notifications/{notification_id}/read`
+- `GET /contacts/dm/{room_id}/block-status`
+- `POST /contacts/dm/{room_id}/block`
+- `POST /contacts/dm/{room_id}/unblock`
 
 ### Rooms
 - `GET /rooms/`
 - `POST /rooms/`
-- `PATCH /rooms/{room_id}` (creator/admin only; `description`, `avatar`, `remove_avatar`)
-- `GET /rooms/{room_id}/presence`
+- `GET /rooms/{room_id}`
+- `PATCH /rooms/{room_id}`
+- `DELETE /rooms/{room_id}`
+- `POST /rooms/{room_id}/join`
+- `POST /rooms/{room_id}/join-request`
+- `GET /rooms/{room_id}/members`
 - `POST /rooms/{room_id}/members`
+- `GET /rooms/{room_id}/members/count`
+- `GET /rooms/{room_id}/presence`
+- `GET /rooms/{room_id}/messages`
 
-## Docs
-- [DISTRIBUTED_SETUP.md](DISTRIBUTED_SETUP.md)
+## WebSocket Contracts
+
+### Chat Socket
+- Endpoint: `/ws/{room_id}/{username}`
+- Client -> server:
+  - message payload: `{"type":"message","content":"...","reply_to":null,"client_message_id":"..."}`
+  - read receipt: `{"type":"read_receipt","message_ids":["..."]}`
+- Server -> client events:
+  - `message`
+  - `message_read`
+  - `user_joined`
+  - `user_left`
+
+### Notifications Socket
+- Endpoint: `/ws/notifications?token=<jwt>`
+- Used for contact/join-request related realtime notifications.
+
+## Media Rules
+
+- Allowed image types: PNG, JPEG, WEBP, GIF
+- Max upload size: 2 MB
+- Current storage model: Base64 data URL in MongoDB
+
+## Known Tradeoffs
+
+- Password hashing currently uses SHA-256; move to bcrypt/argon2 for production hardening.
+- Avatar storage in MongoDB (base64) is simple but not ideal at scale; object storage is recommended.
+
+## Additional Docs
+
 - [CODE_ARCHITECTURE.md](CODE_ARCHITECTURE.md)
-
-## Troubleshooting
-
-### Cannot connect to MongoDB
-- Verify MongoDB is running
-- Verify `MONGODB_URL` and `MONGODB_DB_NAME` in `backend/.env`
-
-### Cannot connect to Redis
-- Verify Redis is running
-- Verify `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`
-
-### WebSocket issues
-- Ensure backend is running on the same URL configured in frontend
-- Ensure `WS_URL` matches backend host/port
-
-## Security Reminder
-
-If credentials or secrets were committed accidentally, rotate them immediately:
-- MongoDB credentials
-- Redis password
-- `SECRET_KEY`
+- [DISTRIBUTED_SETUP.md](DISTRIBUTED_SETUP.md)
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT (see `LICENSE`).

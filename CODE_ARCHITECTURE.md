@@ -1,208 +1,226 @@
-# Code Architecture Guide
+# Lumos Code Architecture
 
-This document explains how the current codebase is organized, how requests flow through the system, and where to add or modify features safely.
+This document explains how the codebase is structured, how data flows through the app, and where to add new behavior safely.
 
-## Design Principles
+## Design Goals
 
-- Separation of concerns across API, repository, service, and WebSocket layers
-- Async-first I/O for MongoDB, Redis, and WebSocket operations
-- Explicit data contracts using Pydantic schemas
-- Feature behavior encoded close to ownership boundaries
+- Async-first backend I/O (MongoDB, Redis, WebSocket).
+- Clear split between API, repository, and realtime layers.
+- Frontend state centralized in `App.jsx`, feature UI in components/pages.
+- Distributed-safe messaging with Redis Pub/Sub.
 
-## Backend Architecture
+## Backend Layout (`backend/app`)
 
-Root: `backend/app/`
+## `main.py`
+- FastAPI app wiring.
+- CORS configuration.
+- Router registration:
+  - `/auth`
+  - `/rooms`
+  - `/users`
+  - `/contacts`
+  - notification websocket router
+- Lifespan startup:
+  - connect MongoDB
+  - connect Redis
+  - ensure contact indexes
 
-### 1) Core Layer (`core/`)
+## `core/`
 
-- `config.py`
-  - Central environment settings
-  - JWT and database/Redis config
-- `database.py`
-  - Singleton-like connection managers for MongoDB and Redis
-  - Application startup/shutdown integration
-- `image_utils.py`
-  - Upload validation for user/group images
-  - Converts image bytes to base64 data URL
-  - Enforces content type and size limit (2 MB)
-- `ws_manager.py`
-  - Notification WebSocket manager for contact events
+### `config.py`
+- Environment settings (`BaseSettings`).
+- Security, MongoDB, Redis, and presence heartbeat/TTL config.
 
-### 2) API Layer (`api/`)
+### `database.py`
+- MongoDB and Redis connection managers.
 
-- `auth.py`
-  - Register/login/JWT validation
-  - `GET /auth/me`
-- `users.py`
-  - User search
-  - `GET /users/me`
-  - `PATCH /users/me` for bio + profile image
-- `rooms.py`
-  - Room CRUD and members
-  - Presence endpoint
-  - `PATCH /rooms/{room_id}` for creator-admin group profile updates
-- `contacts.py`
-  - Contact requests, DM room generation, notifications
-- `ws.py`
-  - Notification socket endpoint
+### `image_utils.py`
+- Upload validation and conversion to base64 data URL.
+- Shared by user profile and group profile updates.
 
-### 3) Repository Layer (`repositories/`)
+### `ws_manager.py`
+- In-memory websocket manager for notifications channel.
+- Used by `/ws/notifications` and `/users/online/{username}`.
 
-- `room_repo.py`
-  - Room creation/read/update helpers
-  - Membership persistence (`add_member`, `remove_member`)
-- `message_repo.py`
-  - Message persistence and paginated history
-- `user_repo.py`
-  - User-related data access helpers
+## `api/`
 
-### 4) Service Layer (`services/`)
+### `auth.py`
+- Register/login/JWT identity.
+- Register validation includes:
+  - required fields
+  - username uniqueness
+  - case-insensitive email uniqueness
+  - password confirmation match
+- Login validation includes required username/password and credential check.
 
-- `pubsub.py`
-  - Redis pub/sub abstraction for cross-instance chat fan-out
+### `rooms.py`
+- Group room CRUD and membership APIs.
+- Room discovery rules:
+  - DM rooms visible only to participants.
+  - Group private/public access checks.
+- Message history endpoint (`GET /rooms/{room_id}/messages`) with pagination.
+- Presence endpoint (`GET /rooms/{room_id}/presence`) based on chat websocket presence.
 
-### 5) WebSocket Layer (`websocket/`)
+### `users.py`
+- User search and public profile batch fetch.
+- Current user profile read/update.
+- `GET /users/online/{username}` for DM online indicator.
 
-- `chat.py`
-  - Chat room connection manager
-  - Real-time broadcast pipeline
-  - Explicit-leave behavior:
-    - Membership is removed only on `close(1000, "explicit_leave")`
-    - Silent disconnects keep room membership intact
+### `contacts.py`
+- Contact request lifecycle.
+- Room join request lifecycle for private groups.
+- Notification retrieval and read marking.
+- DM block system:
+  - block status
+  - block
+  - unblock
 
-### 6) Models Layer (`models/`)
+### `ws.py`
+- Notification websocket endpoint:
+  - `/ws/notifications?token=<jwt>`
 
-- `schemas.py`
-  - API response/request contracts
-  - Includes:
-    - `User` with `bio`, `avatar_url`
-    - `Room` with `description`, `avatar_url`, `members`
+## `repositories/`
 
-## Frontend Architecture
+### `message_repo.py`
+- Message persistence.
+- Paginated message retrieval (oldest -> newest).
+- Read receipt updates (`read_by`).
+- Room message deletion.
 
-Root: `frontend/src/`
+### `room_repo.py`
+- Room create/read/update helpers.
+- Member add/remove helpers.
 
-### 1) State Orchestration
+### `user_repo.py`
+- Legacy/simple user access helpers.
 
-- `App.jsx`
-  - Global auth/session state
-  - Room list + current room state
-  - WebSocket socket lifecycle management
-  - API mutations for:
-    - User profile update
-    - Group profile update
-  - Auth UX:
-    - Non-blocking post-login hydration
-    - Loading states for login/register
+## `services/`
 
-### 2) Main UI Components
+### `pubsub.py`
+- Redis Pub/Sub adapter.
+- Publishes room events and subscribes room channels.
 
-- `components/sidebar.jsx`
-  - Room list rendering
-  - Uses `room.avatar_url` where available
-  - Opens user profile panel
-- `components/profile.jsx`
-  - User self-profile UI
-  - Edit/save bio + profile photo
-- `pages/chatroom.jsx`
-  - Chat stream rendering
-  - Presence polling (`/rooms/{id}/presence`)
-  - Passes group update callbacks to group panel
-- `components/groupprofile.jsx`
-  - Group info/members panel
-  - Shows admin badge for creator
-  - Admin-only group edit controls (photo + description)
-  - Leave-room action
-- `pages/login.jsx`
-  - Login/register form
-  - Animated loading state during auth requests
+## `websocket/`
 
-### 3) API Helpers
+### `chat.py`
+- Chat websocket endpoint (`/ws/{room_id}/{username}`).
+- Membership/authorization check per room type.
+- Connection manager with:
+  - local websocket tracking
+  - Redis-backed room presence heartbeat
+- Handles inbound event types:
+  - `message`
+  - `read_receipt`
+- Persists messages first, then broadcasts via Redis.
+- DM block enforcement at send time:
+  - any active block in the DM disables sending.
+- Explicit leave behavior:
+  - only close reason `explicit_leave` removes group membership and emits `user_left`.
 
-- `api/api.jsx`
-  - Message pagination
-  - Presence fetch
-  - User profile fetch/update helpers
+## Frontend Layout (`frontend/src`)
 
-## Request and Event Flows
+## `App.jsx` (state orchestrator)
+- Global app state:
+  - auth (`token`, `user`)
+  - rooms/current room
+  - message caches by room
+  - websocket references
+- Session persistence:
+  - `localStorage` token/user restore after refresh
+- Main orchestration:
+  - fetch room list
+  - open/close chat websocket
+  - optimistic sending + unsent fallback
+  - read receipt handling
+  - logout cleanup
 
-### Login Flow (Optimized UX)
+## `api/api.jsx`
+- HTTP helper functions for:
+  - room messages/presence
+  - DM block status and actions
+  - user online status
+- WebSocket helper wrappers and message normalization.
 
-1. User submits login/register form
-2. Auth request completes
-3. UI transitions immediately to main app shell
-4. Background hydration runs in parallel:
-   - `GET /rooms/`
-   - badge fetch endpoints
-   - `GET /auth/me`
-5. Form shows spinner/status while request is running
+## `pages/`
 
-### Chat Message Flow (Distributed)
+### `login.jsx`
+- Login/register form UI and loading states.
+- Basic field requirements at UI level.
 
-1. Client sends WebSocket message
-2. Server stores message in MongoDB
-3. Server publishes message to Redis room channel
-4. All backend instances subscribed to that room receive it
-5. Each instance pushes to its local connected clients
+### `chatroom.jsx`
+- Message list rendering and lazy history loading.
+- DM block polling and online status polling.
+- Search within current room messages.
+- Right panel open/close control.
+- Input disable behavior when DM is blocked.
 
-### Membership Flow
+## `components/`
 
-1. User opens/joins room socket
-2. Backend ensures membership exists in MongoDB
-3. Reconnects do not emit repeated join-system messages if already a member
-4. User remains a member until explicit leave
+### `sidebar.jsx`
+- Chat list and user search.
+- Private group discovery pattern:
+  - hidden from default list if user is not a member
+  - discoverable via search
 
-### Explicit Leave Flow
+### `chatbubble.jsx`
+- Message bubble rendering:
+  - reply preview
+  - sent/delivered/read/unsent indicators
 
-1. Client closes socket with reason `explicit_leave`
-2. Backend removes member from room document
-3. Backend emits `user_left` message event
+### `groupprofile.jsx`
+- Group info panel and profile editing.
+- DM-specific actions:
+  - block/unblock button
+  - blocked status hint
 
-### User Profile Update Flow
+### `profile.jsx`, `AddContact.jsx`
+- Profile editor and contact/request management UIs.
 
-1. `PATCH /users/me` with optional `bio`, `avatar`, `remove_avatar`
-2. Backend validates image type/size and stores as data URL
-3. Updated user object returned and applied to UI state
+## Runtime Flows
 
-### Group Profile Update Flow (Creator/Admin)
+## Auth Flow
+1. User submits login/register.
+2. Backend validates and returns JWT.
+3. Frontend stores token/user in state + `localStorage`.
+4. App fetches rooms and initializes sockets.
 
-1. Creator submits `PATCH /rooms/{room_id}` with optional description/avatar changes
-2. Backend enforces authorization (`created_by == current_user`)
-3. Updated room returned and patched into room list/current room in UI
+## Chat Message Flow
+1. UI sends optimistic message with `client_message_id`.
+2. Backend websocket receives and validates.
+3. Message saved to MongoDB.
+4. Event published to Redis room channel.
+5. All subscribed backend instances relay to their local clients.
+6. Frontend matches incoming message to optimistic one using `client_message_id`.
 
-## Distributed Considerations
+## Read Receipt Flow
+1. Client emits `read_receipt` with message ids.
+2. Backend updates `read_by` on matching messages.
+3. Backend emits `message_read` event via Redis.
+4. Clients patch message status to `read` when applicable.
 
-- Messages and persistent entities are distributed correctly through MongoDB + Redis.
-- Presence is tracked in Redis with per-room/per-user keys and heartbeat TTL refresh.
-  - `GET /rooms/{room_id}/presence` now returns global online users across backend instances/devices.
-  - Abrupt disconnect cleanup is eventual (bounded by TTL) while graceful disconnect removes presence immediately.
-
-## Data Model Notes
-
-- User document fields include:
-  - `username`, `email`, `hashed_password`, `bio`, `avatar_url`, timestamps
-- Room document fields include:
-  - `id`, `name`, `description`, `avatar_url`, `created_by`, `members`, timestamps
-- New optional fields do not require manual migration.
+## DM Block Flow
+1. User blocks/unblocks via contacts API.
+2. Block status is polled in chatroom view.
+3. Chat input is disabled when DM is blocked.
+4. Backend enforces block on message send.
 
 ## Extension Guidelines
 
-### Add a New API Feature
+## Adding a New HTTP Feature
+1. Define/update schema in `models/schemas.py` when needed.
+2. Add route in relevant `api/*.py`.
+3. Move heavy data logic into `repositories/`.
+4. Add frontend API helper.
+5. Wire state updates in `App.jsx` and UI component.
 
-1. Define/extend schema in `models/schemas.py` if needed
-2. Add API route in the relevant `api/*.py`
-3. Add repository method if data access logic grows
-4. Update frontend state wiring in `App.jsx`
-5. Add UI controls in responsible component
+## Adding a New Realtime Event
+1. Add event handling in `websocket/chat.py`.
+2. Persist data first if history/audit matters.
+3. Publish via `services/pubsub.py`.
+4. Handle event in frontend socket listener.
 
-### Add a New Distributed Event
+## Key Tradeoffs
 
-1. Define event payload shape in WebSocket handler
-2. Persist to MongoDB if event requires history
-3. Publish through `services/pubsub.py`
-4. Handle rendering in client WebSocket listeners
-
-## Current Tradeoffs
-
-- Image storage currently uses base64 data URLs in MongoDB for simplicity.
-- For production-scale media, migrate to object storage (S3/Cloud Storage) and store only URLs.
+- Password hashing is currently SHA-256 (easy, not ideal for production security).
+- Base64 avatar storage is simple but can grow DB size quickly at scale.
+- `/users/online/{username}` is tied to notification websocket manager state.

@@ -1,33 +1,35 @@
-# Distributed Setup Guide
+# Lumos Distributed Setup
 
-This guide shows how to run the app in single-instance and multi-instance modes, and explains what is shared across instances.
+This guide explains how to run Lumos in:
+- single backend mode (local dev)
+- multi-backend mode (distributed behavior test)
 
-## Architecture Summary
+## Distributed Components
 
-Core distributed components:
+- **FastAPI instances**: one or more backend processes.
+- **MongoDB**: shared persistent data (users, rooms, messages, requests).
+- **Redis**:
+  - Pub/Sub for room message fan-out across instances
+  - presence heartbeat/TTL keys for room online state
 
-- FastAPI backend instances (one or many)
-- Redis Pub/Sub for cross-instance real-time fan-out
-- MongoDB for persistent shared state (users, rooms, messages, contacts)
+## Message Fan-Out Model
 
-Message path:
-
-1. Client sends message to one backend instance via WebSocket
-2. Instance saves message in MongoDB
-3. Instance publishes event to Redis room channel
-4. All subscribed backend instances receive it
-5. Each instance emits to its local connected clients
+1. Client sends websocket message to one backend instance.
+2. Instance stores message in MongoDB.
+3. Instance publishes message event to Redis room channel.
+4. All backend instances subscribed to that room receive event.
+5. Each instance pushes event to its own connected clients.
 
 ## Prerequisites
 
 - Python 3.10+
 - Node.js 18+
-- MongoDB
-- Redis
+- Redis reachable by all backend instances
+- MongoDB reachable by all backend instances
 
-## Environment Configuration
+## Backend Environment
 
-Create `backend/.env` with:
+Create `backend/.env`:
 
 ```env
 SECRET_KEY=change-me
@@ -39,187 +41,149 @@ MONGODB_DB_NAME=chatapp
 
 REDIS_HOST=localhost
 REDIS_PORT=6379
-REDIS_DB=0
 REDIS_PASSWORD=
+REDIS_DB=0
+
+PRESENCE_HEARTBEAT_INTERVAL_SECONDS=10
+PRESENCE_TTL_SECONDS=30
 ```
 
-Notes:
+Rules for distributed correctness:
+- every backend instance must use the **same MongoDB**
+- every backend instance must use the **same Redis**
+- every backend instance must use the **same JWT secret/algorithm**
 
-- `MONGODB_URL` and `REDIS_*` must be identical across all backend instances.
-- No manual MongoDB migration is required for current profile/group features.
+## Frontend Endpoint Config (Optional)
 
-## Backend Setup
+`frontend/.env`:
+
+```env
+VITE_API_URL=http://localhost:8002
+VITE_WS_URL=ws://localhost:8002
+```
+
+If omitted, frontend auto-resolves to current browser host with backend port `8002`.
+
+## Install Dependencies
+
+Backend:
 
 ```bash
 cd backend
 python -m venv venv
+```
 
-# Windows
+Windows:
+
+```bash
 venv\Scripts\activate
-# Linux/Mac
-# source venv/bin/activate
+```
 
+Linux/macOS:
+
+```bash
+source venv/bin/activate
+```
+
+Then:
+
+```bash
 pip install -r ../requirements.txt
 ```
 
-## Frontend Setup
+Frontend:
 
 ```bash
 cd frontend
 npm install
-npm run dev
 ```
 
-Frontend endpoints can be configured with `frontend/.env`:
+## Single-Instance Run
 
-```env
-VITE_API_URL=http://<backend-host>:8002
-VITE_WS_URL=ws://<backend-host>:8002
-```
-
-If not set, frontend auto-uses the current browser hostname with backend port `8002`.
-
-## Run Single Instance (Local)
+Backend:
 
 ```bash
 cd backend
 python -m uvicorn app.main:app --reload --port 8002
 ```
 
-Use one frontend pointed to `8002`.
+Frontend:
 
-## Run Multiple Backend Instances (Local Test)
+```bash
+cd frontend
+npm run dev
+```
 
-In separate terminals:
+## Multi-Instance Run (Local)
+
+Start instance A:
 
 ```bash
 cd backend
 python -m uvicorn app.main:app --reload --port 8001
 ```
 
+Start instance B:
+
 ```bash
 cd backend
 python -m uvicorn app.main:app --reload --port 8002
 ```
 
-To test cross-instance behavior quickly:
+Frontend test options:
+- Option 1: run two frontend windows with different `VITE_API_URL/VITE_WS_URL`.
+- Option 2: use one frontend and switch target ports as needed for testing.
 
-- Browser A frontend points to `8001`
-- Browser B frontend points to `8002`
-- Join same room from both users
-- Send messages both ways
+## What Should Be Shared vs Local
 
-Expected:
+### Shared across all instances
+- users, rooms, messages, contacts, notifications (MongoDB)
+- room message events (Redis Pub/Sub)
+- room presence (`/rooms/{room_id}/presence`) through Redis heartbeat keys
 
-- Messages sync in real-time across both instances
-- Message history is persisted and shared
+### Local to an instance
+- in-memory websocket connection lists
+- notification websocket manager online map
 
-## What Is Shared vs Local
+## Presence and Online Notes
 
-Shared across instances:
+- Group/room presence endpoint uses shared chat presence logic and is designed for multi-instance rooms.
+- DM online status endpoint (`/users/online/{username}`) is based on notification websocket manager state (instance-local).  
+  In load-balanced multi-instance deployments, this can be inconsistent unless you enforce sticky routing or move this status to shared storage.
 
-- Users, rooms, messages, contacts (MongoDB)
-- Chat message fan-out events (Redis Pub/Sub)
-- Room presence state (Redis keys + heartbeat TTL)
+## Validation Checklist for Distributed Test
 
-Local to each instance:
+1. Create two users and join the same room from clients connected through different backend instances.
+2. Send messages both directions.
+3. Confirm:
+   - realtime delivery on both clients
+   - history persistence after reload
+   - read receipts propagate
+4. Check room presence endpoint from either instance.
 
-- In-memory active WebSocket connection list
+## Production Recommendations
 
-Presence behavior:
+1. Put backend instances behind a websocket-capable load balancer.
+2. Use TLS (`https` + `wss`).
+3. Keep secrets out of source control.
+4. Use managed MongoDB/Redis where possible.
+5. Replace SHA-256 password hashing with bcrypt/argon2.
+6. Move avatar media to object storage and store URLs only.
 
-- `GET /rooms/{room_id}/presence` reads shared Redis presence, so counts are global across instances/devices.
-- Graceful disconnect updates presence immediately.
-- Abrupt disconnects are cleaned up automatically by TTL expiry.
+## Quick Diagnostics
 
-## Current Distributed Behavior Highlights
-
-- Users remain room members until explicit leave action.
-- Reconnect/login does not spam repeated join-system messages for existing members.
-- User profile and group profile updates are persisted in MongoDB and visible across instances.
-
-## Production Topology Recommendations
-
-1. Put backend instances behind a load balancer that supports WebSocket upgrade.
-2. Keep all instances on the same MongoDB and Redis.
-3. Use managed services when possible:
-   - MongoDB Atlas
-   - Redis Cloud / ElastiCache
-4. Use TLS (`https://` and `wss://`).
-5. Rotate secrets and credentials if exposed.
-
-## Example Nginx Upstream (WebSocket Ready)
-
-```nginx
-upstream chat_backend {
-    server backend1:8002;
-    server backend2:8002;
-}
-
-server {
-    listen 443 ssl;
-    server_name your-domain.example;
-
-    location / {
-        proxy_pass http://chat_backend;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }
-}
-```
-
-## MongoDB Notes
-
-No settings change is required for recent features.
-
-Automatic optional fields now used:
-
-- `users.bio`
-- `users.avatar_url`
-- `rooms.avatar_url`
-
-Existing documents without these fields remain compatible (defaults are applied).
-
-## Redis Notes
-
-Room channel format:
-
-- `chat:room:{room_id}`
-
-Check connectivity:
+Redis connectivity:
 
 ```bash
 redis-cli ping
 ```
 
-Monitor pub/sub activity:
+Watch Redis traffic during message send:
 
 ```bash
 redis-cli MONITOR
 ```
 
-## Troubleshooting
-
-### Backend starts but clients cannot connect
-
-- Verify frontend `API_URL` and `WS_URL`
-- Verify CORS hosts in `backend/app/main.py`
-- Confirm backend port matches frontend config
-
-### Messages not syncing across instances
-
-- Confirm both instances point to same Redis
-- Confirm both instances point to same MongoDB
-- Inspect Redis monitor output while sending messages
-
-### Presence count looks wrong in multi-instance mode
-
-- Expected with current local-instance presence tracking
-- Move presence to shared Redis/Mongo state if global accuracy is required
-
-### Image upload fails
-
-- Ensure file type is PNG/JPEG/WEBP/GIF
-- Ensure file size is below 2 MB
+OpenAPI docs for endpoint checks:
+- `http://localhost:8001/docs`
+- `http://localhost:8002/docs`
