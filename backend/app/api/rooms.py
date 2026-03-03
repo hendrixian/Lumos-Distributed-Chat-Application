@@ -526,10 +526,14 @@ async def get_room_presence(room_id: str, current_user: User = Depends(get_curre
 
     _ensure_room_access(room, current_user.username)
 
-    room_members = set(room.get("members", []))
+    room_type = room.get("type", "group")
+    if room_type == "dm":
+        room_members = set(room.get("participants", []))
+    else:
+        room_members = set(room.get("members", []))
     online_members = [
         username
-        for username in chat_manager.get_online_members(room_id)
+        for username in await chat_manager.get_online_members(room_id)
         if username in room_members
     ]
 

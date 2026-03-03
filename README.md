@@ -33,6 +33,7 @@ A real-time chat application built with FastAPI, React, MongoDB, and Redis, desi
 
 ### Distributed Architecture
 - Redis Pub/Sub for multi-instance message fan-out
+- Redis-backed global room presence (online users across devices/instances)
 - MongoDB for durable storage
 - Ready for load-balanced horizontal scaling
 
@@ -100,6 +101,9 @@ REDIS_HOST=redis-10419.c1.ap-southeast-1-1.ec2.cloud.redislabs.com
 REDIS_PORT=6379
 REDIS_DB=0
 REDIS_PASSWORD=
+
+PRESENCE_HEARTBEAT_INTERVAL_SECONDS=10
+PRESENCE_TTL_SECONDS=30
 ```
 
 For multi-device/LAN usage, set frontend endpoint env vars in `frontend/.env`:

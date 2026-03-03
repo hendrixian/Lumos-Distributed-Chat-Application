@@ -173,9 +173,9 @@ Root: `frontend/src/`
 ## Distributed Considerations
 
 - Messages and persistent entities are distributed correctly through MongoDB + Redis.
-- Presence endpoint currently reads in-memory room users from the serving backend instance.
-  - In single-instance this is accurate.
-  - In multi-instance without shared presence state, counts may be partial.
+- Presence is tracked in Redis with per-room/per-user keys and heartbeat TTL refresh.
+  - `GET /rooms/{room_id}/presence` now returns global online users across backend instances/devices.
+  - Abrupt disconnect cleanup is eventual (bounded by TTL) while graceful disconnect removes presence immediately.
 
 ## Data Model Notes
 

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     redis_port: int
     redis_password: str 
     redis_db: int = 0
+    presence_heartbeat_interval_seconds: int = 10
+    presence_ttl_seconds: int = 30
     
     class Config:
         env_file = ".env"

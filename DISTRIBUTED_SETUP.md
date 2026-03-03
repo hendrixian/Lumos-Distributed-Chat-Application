@@ -120,16 +120,17 @@ Shared across instances:
 
 - Users, rooms, messages, contacts (MongoDB)
 - Chat message fan-out events (Redis Pub/Sub)
+- Room presence state (Redis keys + heartbeat TTL)
 
 Local to each instance:
 
 - In-memory active WebSocket connection list
-- In-memory online member set used by presence endpoint
 
-Presence caveat:
+Presence behavior:
 
-- `GET /rooms/{room_id}/presence` reflects online users known to the serving instance.
-- In multi-instance mode without shared presence storage, online counts may be partial.
+- `GET /rooms/{room_id}/presence` reads shared Redis presence, so counts are global across instances/devices.
+- Graceful disconnect updates presence immediately.
+- Abrupt disconnects are cleaned up automatically by TTL expiry.
 
 ## Current Distributed Behavior Highlights
 
