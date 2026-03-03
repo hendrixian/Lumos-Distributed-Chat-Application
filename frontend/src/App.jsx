@@ -6,6 +6,7 @@ import LoginForm from './pages/login.jsx';
 import { API_URL, WS_URL } from './config/endpoints.js';
 
 const TZ_SUFFIX_RE = /(Z|[+-]\d{2}:\d{2})$/;
+const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const normalizeTimestamp = (rawTimestamp) => {
   if (!rawTimestamp) return null;
@@ -28,6 +29,20 @@ const buildClientMessageId = () => {
     return crypto.randomUUID();
   }
   return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const readErrorMessage = async (response, fallbackMessage) => {
+  try {
+    const data = await response.json();
+    if (typeof data?.detail === 'string' && data.detail.trim()) return data.detail;
+    if (Array.isArray(data?.detail) && data.detail.length > 0) {
+      const firstMessage = data.detail[0]?.msg;
+      if (typeof firstMessage === 'string' && firstMessage.trim()) return firstMessage;
+    }
+  } catch (_err) {
+    // Keep fallback message.
+  }
+  return fallbackMessage;
 };
 
 export default function App() {
@@ -137,6 +152,34 @@ export default function App() {
   const handleAuth = async (e) => {
     e.preventDefault();
     if (isAuthLoading) return;
+
+    const trimmedUsername = username.trim();
+    const trimmedEmail = email.trim();
+    const rawPassword = password;
+    const rawConfirmPassword = confirmPassword;
+    const hasPassword = rawPassword.trim().length > 0;
+    const hasConfirmPassword = rawConfirmPassword.trim().length > 0;
+
+    if (isLogin) {
+      if (!trimmedUsername || !hasPassword) {
+        setError('Username and password are required');
+        return;
+      }
+    } else {
+      if (!trimmedUsername || !trimmedEmail || !hasPassword || !hasConfirmPassword) {
+        setError('Username, email, password, and confirm password are required');
+        return;
+      }
+      if (!EMAIL_FORMAT_RE.test(trimmedEmail)) {
+        setError('Please enter a valid email address');
+        return;
+      }
+      if (rawPassword !== rawConfirmPassword) {
+        setError('Password and confirm password must be the same');
+        return;
+      }
+    }
+
     setError('');
     setIsAuthLoading(true);
 
@@ -146,31 +189,34 @@ export default function App() {
         const registerRes = await fetch(`${API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password }),
+          body: JSON.stringify({
+            username: trimmedUsername,
+            email: trimmedEmail,
+            password: rawPassword,
+            confirm_password: rawConfirmPassword,
+          }),
         });
         if (!registerRes.ok) {
-          const data = await registerRes.json();
-          throw new Error(data.detail || 'Registration failed');
+          throw new Error(await readErrorMessage(registerRes, 'Registration failed'));
         }
       }
 
       setAuthLoadingText('Signing you in...');
       const formData = new FormData();
-      formData.append('username', username);
-      formData.append('password', password);
+      formData.append('username', trimmedUsername);
+      formData.append('password', rawPassword);
 
       const loginRes = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         body: formData,
       });
       if (!loginRes.ok) {
-        const data = await loginRes.json();
-        throw new Error(data.detail || 'Login failed');
+        throw new Error(await readErrorMessage(loginRes, 'Login failed'));
       }
 
       const data = await loginRes.json();
       setToken(data.access_token);
-      setUser({ username, email: '', bio: '', avatar_url: '' });
+      setUser({ username: trimmedUsername, email: '', bio: '', avatar_url: '' });
 
       setPassword('');
       setEmail('');

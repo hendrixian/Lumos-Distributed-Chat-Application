@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 import hashlib
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 from ..models.schemas import UserCreate, User, Token, TokenData
@@ -124,31 +125,20 @@ async def get_user_from_token(token: str, credentials_exception: Optional[HTTPEx
     )
 
 
-async def user_exists(username: str, email: str = None) -> bool:
-    """
-    Check if a user already exists in MongoDB
-    
-    Args:
-        username: Username to check
-        email: Email to check (optional)
-        
-    Returns:
-        True if user exists, False otherwise
-    """
+async def username_exists(username: str) -> bool:
     users_collection = mongodb.get_collection("users")
-    
-    # Check if username exists
-    user_by_username = await users_collection.find_one({"username": username})
-    if user_by_username:
-        return True
-    
-    # Also check if email exists (if provided)
-    if email:
-        user_by_email = await users_collection.find_one({"email": email})
-        if user_by_email:
-            return True
-    
-    return False
+    return await users_collection.find_one({"username": username}) is not None
+
+
+async def email_exists(email: str) -> bool:
+    users_collection = mongodb.get_collection("users")
+    # Keep email uniqueness case-insensitive.
+    return (
+        await users_collection.find_one(
+            {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+        )
+        is not None
+    )
 
 async def create_user(username: str, email: str, hashed_password: str):
     """
@@ -200,18 +190,42 @@ async def register(user: UserCreate):
     Raises:
         HTTPException: If username or email already exists
     """
-    # Check if user already exists (by username or email)
-    if await user_exists(user.username, user.email):
+    username = (user.username or "").strip()
+    email = str(user.email or "").strip().lower()
+    password = user.password or ""
+    confirm_password = user.confirm_password or ""
+
+    if not username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username is required")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
+    if not password.strip() or not confirm_password.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username or email already registered"
+            detail="Password and confirm password are required",
+        )
+    if password != confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password and confirm password must be the same",
+        )
+
+    if await username_exists(username):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken",
+        )
+    if await email_exists(email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
         )
     
     # Hash password and create user in MongoDB
-    hashed_password = get_password_hash(user.password)
-    await create_user(user.username, user.email, hashed_password)
-    
-    return User(username=user.username, email=user.email)
+    hashed_password = get_password_hash(password)
+    await create_user(username, email, hashed_password)
+
+    return User(username=username, email=email)
 
 
 @router.post("/login", response_model=Token)
@@ -228,9 +242,17 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     Raises:
         HTTPException: If credentials are invalid
     """
-    user = await get_user_by_username(form_data.username)
+    username = (form_data.username or "").strip()
+    password = form_data.password or ""
+    if not username or not password.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username and password are required",
+        )
+
+    user = await get_user_by_username(username)
     
-    if not user or not verify_password(form_data.password, user["hashed_password"]):
+    if not user or not verify_password(password, user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",

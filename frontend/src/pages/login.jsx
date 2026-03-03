@@ -37,6 +37,7 @@ export default function LoginForm({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSubmit(e)}
+            required
             disabled={isLoading}
           />
 
@@ -48,6 +49,8 @@ export default function LoginForm({
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && onSubmit(e)}
+              required
               disabled={isLoading}
             />
           )}
@@ -60,6 +63,7 @@ export default function LoginForm({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSubmit(e)}
+            required
             disabled={isLoading}
           />
 
@@ -71,6 +75,8 @@ export default function LoginForm({
               placeholder="Confirm Password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && onSubmit(e)}
+              required
               disabled={isLoading}
             />
           )}
