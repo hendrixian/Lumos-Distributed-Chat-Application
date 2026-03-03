@@ -13,6 +13,7 @@ export default function ChatWindow({
   newMessage,
   setNewMessage,
   onSend,
+  onMarkRead,
   onLeave,
   onAddMember,
   onUpdateGroupProfile,
@@ -20,6 +21,7 @@ export default function ChatWindow({
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const readReceiptSentRef = useRef(new Set());
 
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -80,6 +82,27 @@ export default function ChatWindow({
 
     fetchInitial();
   }, [room?.id, token]);
+
+  useEffect(() => {
+    readReceiptSentRef.current = new Set();
+  }, [room?.id]);
+
+  useEffect(() => {
+    if (!room?.id || !user?.username || !onMarkRead) return;
+
+    const unreadMessageIds = normalizedMessages
+      .filter((msg) => msg.type === 'message')
+      .filter((msg) => msg.username !== user.username)
+      .map((msg) => msg._id)
+      .filter(Boolean)
+      .filter((messageId) => !readReceiptSentRef.current.has(messageId));
+
+    if (unreadMessageIds.length === 0) return;
+    const sent = onMarkRead(unreadMessageIds);
+    if (!sent) return;
+
+    unreadMessageIds.forEach((messageId) => readReceiptSentRef.current.add(messageId));
+  }, [normalizedMessages, room?.id, user?.username, onMarkRead]);
 
   useEffect(() => {
     if (!room?.id || !token) {

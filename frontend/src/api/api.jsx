@@ -1,5 +1,23 @@
 import { API_URL, WS_URL } from '../config/endpoints.js';
 
+const TZ_SUFFIX_RE = /(Z|[+-]\d{2}:\d{2})$/;
+
+function normalizeServerTimestamp(rawTimestamp) {
+  if (!rawTimestamp) return null;
+  const asString = String(rawTimestamp);
+  const normalized = TZ_SUFFIX_RE.test(asString) ? asString : `${asString}Z`;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function deriveMessageStatus(message) {
+  const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
+  const hasBeenReadByRecipient = readBy.some((username) => username && username !== message?.username);
+  if (hasBeenReadByRecipient) return 'read';
+  return message?.delivery_status || 'delivered';
+}
+
 // =====================================================
 // ===================== MESSAGES ======================
 // =====================================================
@@ -30,9 +48,13 @@ export async function fetchRoomMessages(
     username: msg.username,
     content: msg.content,
     type: msg.type,
-    timestamp: new Date(msg.timestamp).toISOString(),
+    timestamp: normalizeServerTimestamp(msg.timestamp),
     reply_to: msg.reply_to || null,
     avatar: msg.avatar_url || null,
+    read_by: Array.isArray(msg.read_by) ? msg.read_by : [],
+    delivery_status: msg.delivery_status || 'delivered',
+    status: deriveMessageStatus(msg),
+    client_message_id: msg.client_message_id || null,
   }));
 }
 
@@ -65,9 +87,14 @@ export function connectToRoom(roomId, username, onMessage, onError) {
       username: message.username,
       content: message.content,
       type: message.type,
-      timestamp: new Date(message.timestamp).toISOString(),
+      timestamp: normalizeServerTimestamp(message.timestamp),
       reply_to: message.reply_to || null,
       avatar: message.avatar_url || null,
+      read_by: Array.isArray(message.read_by) ? message.read_by : [],
+      delivery_status: message.delivery_status || 'delivered',
+      status: deriveMessageStatus(message),
+      client_message_id: message.client_message_id || null,
+      message_ids: Array.isArray(message.message_ids) ? message.message_ids : [],
     });
   };
 

@@ -2,7 +2,7 @@
 Room management API endpoints
 Handles creation, retrieval, and deletion of chat rooms
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Depends, Query, File, Form, UploadFile
 from typing import List
 import uuid
@@ -16,6 +16,14 @@ from ..websocket.chat import manager as chat_manager
 from .auth import get_current_user
 
 router = APIRouter()
+
+
+def _to_utc_iso(timestamp: datetime | None) -> str | None:
+    if timestamp is None:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc).isoformat()
 
 
 def _normalize_visibility(raw_visibility: str | None) -> str:
@@ -588,8 +596,11 @@ async def get_room_messages(
             "username": msg.get("username"),
             "content": msg.get("content"),
             "type": msg.get("type", "message"),
-            "timestamp": msg.get("timestamp").isoformat() if msg.get("timestamp") else None,
+            "timestamp": _to_utc_iso(msg.get("timestamp")),
             "reply_to": msg.get("reply_to"),
+            "read_by": msg.get("read_by", []),
+            "delivery_status": msg.get("delivery_status", "delivered"),
+            "client_message_id": msg.get("client_message_id"),
         }
         for msg in messages
     ]

@@ -1,4 +1,4 @@
-import { Check, CheckCheck, CornerUpLeft } from 'lucide-react';
+import { AlertCircle, Check, CheckCheck, Clock3, CornerUpLeft } from 'lucide-react';
 
 export default function MessageBubble({
   msg,
@@ -18,7 +18,7 @@ export default function MessageBubble({
     );
   }
 
-  const isSeen = msg.seen === true;
+  const status = msg.status || (msg.seen ? 'read' : 'delivered');
   const messageId = msg._id || msg.id;
 
   return (
@@ -92,7 +92,7 @@ export default function MessageBubble({
         {/* --- Main message content --- */}
         <p>{msg.content}</p>
 
-        {/* --- Time + Seen --- */}
+        {/* --- Time + Delivery State --- */}
         <div className="flex items-center justify-end gap-1 mt-1 text-[10px] opacity-75">
           <span>
             {msg.timestamp
@@ -102,12 +102,15 @@ export default function MessageBubble({
                 })
               : ''}
           </span>
-          {isOwn &&
-            (isSeen ? (
-              <CheckCheck size={14} />
-            ) : (
-              <Check size={14} />
-            ))}
+          {isOwn && status === 'read' && <CheckCheck size={14} />}
+          {isOwn && status === 'delivered' && <Check size={14} />}
+          {isOwn && status === 'sending' && <Clock3 size={14} />}
+          {isOwn && status === 'unsent' && (
+            <span className="inline-flex items-center gap-1 text-red-200">
+              <AlertCircle size={12} />
+              Unsent
+            </span>
+          )}
         </div>
       </div>
     </div>

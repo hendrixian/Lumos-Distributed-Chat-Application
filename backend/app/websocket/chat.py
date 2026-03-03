@@ -5,7 +5,7 @@ Stores messages in MongoDB for persistence.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import Dict, List
 
@@ -18,6 +18,17 @@ from ..repositories.room_repo import room_repository
 from ..services.pubsub import pubsub_service
 
 EXPLICIT_LEAVE_REASONS = {"explicit_leave", "User left room"}
+
+
+def _to_utc_iso(timestamp: datetime | None) -> str | None:
+    """
+    Normalize datetimes to an explicit UTC ISO-8601 string.
+    """
+    if timestamp is None:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc).isoformat()
 
 
 class ConnectionManager:
@@ -189,7 +200,7 @@ class ConnectionManager:
                     "room_id": room_id,
                     "username": username,
                     "content": f"{username} joined the room",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
                 print(f"[db] save join user={username} room={room_id}")
@@ -326,8 +337,11 @@ class ConnectionManager:
                 "room_id": room_id,
                 "username": msg["username"],
                 "content": msg["content"],
-                "timestamp": msg["timestamp"].isoformat(),
+                "timestamp": _to_utc_iso(msg.get("timestamp")),
                 "reply_to": msg.get("reply_to"),
+                "delivery_status": msg.get("delivery_status", "delivered"),
+                "read_by": msg.get("read_by", []),
+                "client_message_id": msg.get("client_message_id"),
             }
             await websocket.send_text(json.dumps(message_data))
 
@@ -418,7 +432,37 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                 print(f"[ws] incoming user={username} room={room_id}")
 
                 message_data = json.loads(data)
+                message_type = message_data.get("type", "message")
+
+                if message_type == "read_receipt":
+                    raw_message_ids = message_data.get("message_ids", [])
+                    if isinstance(raw_message_ids, str):
+                        raw_message_ids = [raw_message_ids]
+                    if not isinstance(raw_message_ids, list):
+                        raw_message_ids = []
+
+                    read_ids = await message_repository.mark_messages_read(
+                        room_id=room_id,
+                        reader_username=username,
+                        message_ids=raw_message_ids,
+                    )
+
+                    if read_ids:
+                        read_event = {
+                            "type": "message_read",
+                            "room_id": room_id,
+                            "read_by": username,
+                            "message_ids": read_ids,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                        await pubsub_service.publish_message(room_id, read_event)
+                    continue
+
                 reply_to = message_data.get("reply_to")
+                client_message_id = message_data.get("client_message_id")
+                content = (message_data.get("content") or "").strip()
+                if not content:
+                    continue
 
                 print(f"[db] save message user={username} room={room_id}")
 
@@ -426,9 +470,10 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                 saved_message = await message_repository.save_message(
                     room_id=room_id,
                     username=username,
-                    content=message_data.get("content", ""),
+                    content=content,
                     message_type="message",
                     reply_to=reply_to,
+                    client_message_id=client_message_id,
                 )
 
                 message = {
@@ -437,9 +482,13 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                     "room_id": room_id,
                     "username": username,
                     "content": saved_message.get("content", ""),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": _to_utc_iso(saved_message.get("timestamp")),
                     "reply_to": reply_to,
+                    "delivery_status": saved_message.get("delivery_status", "delivered"),
+                    "read_by": saved_message.get("read_by", []),
                 }
+                if client_message_id:
+                    message["client_message_id"] = client_message_id
 
                 print(f"[redis] publish message user={username} room={room_id}")
 
@@ -465,7 +514,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
                     "room_id": room_id,
                     "username": username,
                     "content": f"{username} left the room",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
                 await message_repository.save_message(

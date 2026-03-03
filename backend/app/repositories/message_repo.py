@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 from ..core.database import mongodb
 
@@ -24,20 +24,29 @@ class MessageRepository:
         username: str,
         content: str,
         message_type: str = "message",
-        reply_to: Optional[str] = None
+        reply_to: Optional[str] = None,
+        client_message_id: Optional[str] = None,
     ) -> Dict:
         """Save a new message to the database"""
 
+        timestamp = datetime.now(timezone.utc)
         message_doc = {
             "room_id": room_id,
             "username": username,
             "content": content,
             "type": message_type,
-            "timestamp": datetime.utcnow(),
+            "timestamp": timestamp,
         }
 
         if reply_to:
             message_doc["reply_to"] = reply_to
+        if client_message_id:
+            message_doc["client_message_id"] = client_message_id
+
+        # Message delivery lifecycle fields for UI indicators.
+        if message_type == "message":
+            message_doc["delivery_status"] = "delivered"
+            message_doc["read_by"] = []
 
         result = await self.collection.insert_one(message_doc)
 
@@ -45,6 +54,47 @@ class MessageRepository:
         message_doc["_id"] = str(result.inserted_id)
 
         return message_doc
+
+    async def mark_messages_read(
+        self,
+        room_id: str,
+        reader_username: str,
+        message_ids: List[str],
+    ) -> List[str]:
+        """
+        Mark messages as read by a user and return affected message IDs.
+        """
+        if not message_ids:
+            return []
+
+        object_ids: List[ObjectId] = []
+        for raw_id in message_ids:
+            try:
+                object_ids.append(ObjectId(raw_id))
+            except Exception:
+                continue
+
+        if not object_ids:
+            return []
+
+        query = {
+            "room_id": room_id,
+            "_id": {"$in": object_ids},
+            "type": "message",
+            "username": {"$ne": reader_username},
+        }
+
+        matched_docs = await self.collection.find(query, {"_id": 1}).to_list(length=len(object_ids))
+        if not matched_docs:
+            return []
+
+        matched_ids = [doc["_id"] for doc in matched_docs]
+        await self.collection.update_many(
+            {"_id": {"$in": matched_ids}},
+            {"$addToSet": {"read_by": reader_username}},
+        )
+
+        return [str(message_id) for message_id in matched_ids]
 
     # ==========================================
     # GET ROOM MESSAGES (LAZY LOAD SUPPORT)

@@ -5,6 +5,31 @@ import ChatWindow from './pages/chatroom.jsx';
 import LoginForm from './pages/login.jsx';
 import { API_URL, WS_URL } from './config/endpoints.js';
 
+const TZ_SUFFIX_RE = /(Z|[+-]\d{2}:\d{2})$/;
+
+const normalizeTimestamp = (rawTimestamp) => {
+  if (!rawTimestamp) return null;
+  const asString = String(rawTimestamp);
+  const normalized = TZ_SUFFIX_RE.test(asString) ? asString : `${asString}Z`;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+};
+
+const deriveMessageStatus = (message) => {
+  const readBy = Array.isArray(message?.read_by) ? message.read_by : [];
+  const hasBeenReadByRecipient = readBy.some((name) => name && name !== message?.username);
+  if (hasBeenReadByRecipient) return 'read';
+  return message?.delivery_status || 'delivered';
+};
+
+const buildClientMessageId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -31,6 +56,11 @@ export default function App() {
 
   const ws = useRef(null);
   const notificationWs = useRef(null);
+  const currentRoomRef = useRef(null);
+
+  useEffect(() => {
+    currentRoomRef.current = currentRoom;
+  }, [currentRoom]);
 
   const closeChatSocket = (reason = 'silent_disconnect') => {
     if (!ws.current) return;
@@ -367,6 +397,110 @@ export default function App() {
     }
   };
 
+  const mergeIncomingMessage = (existingMessages = [], incomingMessage, activeUsername) => {
+    const messagesList = Array.isArray(existingMessages) ? existingMessages : [];
+    if (incomingMessage?.type !== 'message') {
+      return [...messagesList, incomingMessage];
+    }
+
+    const isOwnMessage = incomingMessage.username === activeUsername;
+    if (isOwnMessage && incomingMessage.client_message_id) {
+      let replaced = false;
+      const merged = messagesList.map((msg) => {
+        const isSamePendingMessage =
+          msg?.client_message_id === incomingMessage.client_message_id ||
+          msg?._id === incomingMessage.client_message_id;
+        if (!replaced && isSamePendingMessage) {
+          replaced = true;
+          return {
+            ...msg,
+            ...incomingMessage,
+            status: deriveMessageStatus(incomingMessage),
+          };
+        }
+        return msg;
+      });
+      if (!replaced) merged.push(incomingMessage);
+      return merged;
+    }
+
+    if (incomingMessage?._id && messagesList.some((msg) => msg?._id === incomingMessage._id)) {
+      return messagesList;
+    }
+
+    return [...messagesList, incomingMessage];
+  };
+
+  const applyReadReceipt = (roomId, messageIds = [], readerUsername) => {
+    if (!roomId || !readerUsername || !Array.isArray(messageIds) || messageIds.length === 0) {
+      return;
+    }
+    const targetIds = new Set(messageIds);
+
+    const patchMessages = (source = []) =>
+      source.map((msg) => {
+        if (!targetIds.has(msg?._id) || msg?.username === readerUsername) {
+          return msg;
+        }
+        const readBy = Array.isArray(msg?.read_by) ? msg.read_by : [];
+        if (readBy.includes(readerUsername)) {
+          return { ...msg, status: deriveMessageStatus({ ...msg, read_by: readBy }) };
+        }
+        const updatedReadBy = [...readBy, readerUsername];
+        return {
+          ...msg,
+          read_by: updatedReadBy,
+          status: deriveMessageStatus({ ...msg, read_by: updatedReadBy }),
+        };
+      });
+
+    setMessagesByRoom((prev) => {
+      const roomMessages = prev[roomId] || [];
+      return { ...prev, [roomId]: patchMessages(roomMessages) };
+    });
+
+    if (currentRoomRef.current?.id === roomId) {
+      setMessages((prev) => patchMessages(prev));
+    }
+  };
+
+  const markMessageAsUnsent = (roomId, clientMessageId) => {
+    const patchPendingMessage = (source = []) =>
+      source.map((msg) =>
+        msg?.client_message_id === clientMessageId || msg?._id === clientMessageId
+          ? { ...msg, status: 'unsent', delivery_status: 'unsent' }
+          : msg
+      );
+
+    setMessagesByRoom((prev) => {
+      const roomMessages = prev[roomId] || [];
+      return { ...prev, [roomId]: patchPendingMessage(roomMessages) };
+    });
+
+    if (currentRoomRef.current?.id === roomId) {
+      setMessages((prev) => patchPendingMessage(prev));
+    }
+  };
+
+  const markMessagesRead = (messageIds = []) => {
+    const uniqueIds = [...new Set(messageIds.filter(Boolean))];
+    if (uniqueIds.length === 0) return false;
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return false;
+
+    try {
+      ws.current.send(
+        JSON.stringify({
+          type: 'read_receipt',
+          message_ids: uniqueIds,
+        })
+      );
+      return true;
+    } catch (err) {
+      console.error('Failed to send read receipt', err);
+      return false;
+    }
+  };
+
   const joinRoom = (room) => {
     if (!room?.id || !user?.username) return;
     setShowRequestsPage(false);
@@ -380,7 +514,7 @@ export default function App() {
 
     if (canReuseSocket) {
       setCurrentRoom(room);
-      setMessages(messagesByRoom[room.id] || []);
+      setMessages(messagesByRoom[room.id] || messages);
       return;
     }
 
@@ -390,12 +524,31 @@ export default function App() {
 
     const socket = new WebSocket(`${WS_URL}/ws/${room.id}/${user.username}`);
     socket.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      setMessages((prev) => [...prev, msg]);
+      const incomingRaw = JSON.parse(event.data);
+
+      if (incomingRaw?.type === 'message_read') {
+        applyReadReceipt(room.id, incomingRaw.message_ids || [], incomingRaw.read_by);
+        return;
+      }
+
+      const incomingMessage = {
+        ...incomingRaw,
+        timestamp: normalizeTimestamp(incomingRaw.timestamp) || new Date().toISOString(),
+        read_by: Array.isArray(incomingRaw.read_by) ? incomingRaw.read_by : [],
+        delivery_status: incomingRaw.delivery_status || 'delivered',
+        status: deriveMessageStatus(incomingRaw),
+        client_message_id: incomingRaw.client_message_id || null,
+      };
+
       setMessagesByRoom((prev) => {
-        const roomMsgs = prev[room.id] ? [...prev[room.id], msg] : [msg];
-        return { ...prev, [room.id]: roomMsgs };
+        const roomMessages = prev[room.id] || [];
+        const merged = mergeIncomingMessage(roomMessages, incomingMessage, user.username);
+        return { ...prev, [room.id]: merged };
       });
+
+      if (currentRoomRef.current?.id === room.id) {
+        setMessages((prev) => mergeIncomingMessage(prev, incomingMessage, user.username));
+      }
     };
     socket.onerror = console.error;
     ws.current = socket;
@@ -408,11 +561,54 @@ export default function App() {
   };
 
   const sendMessage = (payload) => {
-    if (!ws.current) return;
+    if (!currentRoom?.id || !user?.username) return;
     const content = typeof payload === 'string' ? payload : payload?.content;
     const replyTo = typeof payload === 'object' ? payload?.reply_to || null : null;
     if (!content?.trim()) return;
-    ws.current.send(JSON.stringify({ content: content.trim(), reply_to: replyTo }));
+
+    const roomId = currentRoom.id;
+    const trimmedContent = content.trim();
+    const clientMessageId = buildClientMessageId();
+    const optimisticMessage = {
+      _id: clientMessageId,
+      client_message_id: clientMessageId,
+      room_id: roomId,
+      username: user.username,
+      content: trimmedContent,
+      type: 'message',
+      timestamp: new Date().toISOString(),
+      reply_to: replyTo,
+      read_by: [],
+      delivery_status: 'pending',
+      status: 'sending',
+    };
+
+    setMessagesByRoom((prev) => {
+      const roomMessages = prev[roomId] || [];
+      return { ...prev, [roomId]: [...roomMessages, optimisticMessage] };
+    });
+    if (currentRoomRef.current?.id === roomId) {
+      setMessages((prev) => [...prev, optimisticMessage]);
+    }
+
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+      markMessageAsUnsent(roomId, clientMessageId);
+      return;
+    }
+
+    try {
+      ws.current.send(
+        JSON.stringify({
+          type: 'message',
+          content: trimmedContent,
+          reply_to: replyTo,
+          client_message_id: clientMessageId,
+        })
+      );
+    } catch (err) {
+      console.error('sendMessage failed:', err);
+      markMessageAsUnsent(roomId, clientMessageId);
+    }
   };
 
   const logout = () => {
@@ -497,6 +693,7 @@ export default function App() {
             newMessage={newMessage}
             setNewMessage={setNewMessage}
             onSend={sendMessage}
+            onMarkRead={markMessagesRead}
             onLeave={leaveRoom}
             onAddMember={addMemberToRoom}
             onUpdateGroupProfile={updateGroupProfile}

@@ -104,7 +104,7 @@ export default function AddContact({
                 <span>
                   {req.request_type === 'room_join'
                     ? `${req.from_username} wants to join "${req.room_name || 'Private Room'}"`
-                    : `${req.from_username} sent you a contact request`}
+                    : `${req.from_username} sent you a chat request`}
                 </span>
                 <div className="flex gap-2">
                   <button
