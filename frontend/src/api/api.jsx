@@ -113,6 +113,25 @@ export async function blockDmUser(roomId, token) {
   return res.json();
 }
 
+export async function unblockDmUser(roomId, token) {
+  const res = await fetch(`${API_URL}/contacts/dm/${roomId}/unblock`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let detail = 'Failed to unblock user';
+    try {
+      const data = await res.json();
+      detail = data?.detail || detail;
+    } catch (_err) {
+      // Keep fallback detail.
+    }
+    throw createHttpError(res.status, detail);
+  }
+
+  return res.json();
+}
+
 export async function fetchUserOnlineStatus(username, token) {
   const targetUsername = String(username || '').trim();
   if (!targetUsername) return { username: '', online: false };

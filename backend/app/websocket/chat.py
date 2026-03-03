@@ -466,11 +466,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, username: str):
 
                 if room_type == "dm":
                     dm_blocks_col = mongodb.get_collection("dm_blocks")
-                    blocked_doc = await dm_blocks_col.find_one(
-                        {"room_id": room_id, "blocked": username}
-                    )
+                    blocked_doc = await dm_blocks_col.find_one({"room_id": room_id})
                     if blocked_doc:
-                        # Blocked users cannot send messages in this DM.
+                        # Any active DM block disables messaging in both directions.
                         continue
 
                 print(f"[db] save message user={username} room={room_id}")

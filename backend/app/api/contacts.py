@@ -185,6 +185,34 @@ async def block_dm_user(
     }
 
 
+@router.post("/dm/{room_id}/unblock")
+async def unblock_dm_user(
+    room_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    _, other_username = await _get_dm_room_for_user(room_id, current_user.username)
+    dm_blocks_col = mongodb.get_collection("dm_blocks")
+
+    deleted = await dm_blocks_col.delete_one(
+        {
+            "room_id": room_id,
+            "blocker": current_user.username,
+            "blocked": other_username,
+        }
+    )
+
+    if deleted.deleted_count == 0:
+        active_block = await dm_blocks_col.find_one({"room_id": room_id})
+        if active_block:
+            raise HTTPException(status_code=403, detail="Only blocker can unblock this DM")
+
+    return {
+        "message": f"Unblocked {other_username}",
+        "room_id": room_id,
+        "unblocked_username": other_username,
+    }
+
+
 @router.post("/add")
 async def add_contact(
     data: AddContactRequest,

@@ -8,6 +8,7 @@ import {
   fetchRoomMessages,
   fetchRoomPresence,
   fetchUserOnlineStatus,
+  unblockDmUser,
 } from '../api/api.jsx';
 
 export default function ChatWindow({
@@ -312,7 +313,8 @@ export default function ChatWindow({
 
   const handleSend = () => {
     if (!newMessage.trim()) return;
-    if (room?.type === 'dm' && dmBlockStatus?.blocked_by_other) return;
+    if (room?.type === 'dm' && (dmBlockStatus?.blocked_by_other || dmBlockStatus?.blocked_by_you))
+      return;
 
     onSend?.({
       content: newMessage,
@@ -342,7 +344,9 @@ export default function ChatWindow({
     (Array.isArray(room.members)
       ? room.members.find((username) => username !== user?.username) || ''
       : '');
+  const blockedByYouInDm = isDmRoom && dmBlockStatus?.blocked_by_you;
   const blockedByOtherInDm = isDmRoom && dmBlockStatus?.blocked_by_other;
+  const dmMessagingDisabled = blockedByYouInDm || blockedByOtherInDm;
 
   const handleBlockDm = async () => {
     if (!room?.id || room?.type !== 'dm') return false;
@@ -360,6 +364,26 @@ export default function ChatWindow({
       return true;
     } catch (err) {
       window.alert(err?.message || 'Failed to block user');
+      return false;
+    }
+  };
+
+  const handleUnblockDm = async () => {
+    if (!room?.id || room?.type !== 'dm') return false;
+    if (!dmBlockStatus?.blocked_by_you) return true;
+    if (!window.confirm(`Unblock ${dmPeerUsername || 'this user'}?`)) return false;
+
+    try {
+      await unblockDmUser(room.id, token);
+      const updatedStatus = await fetchDmBlockStatus(room.id, token);
+      setDmBlockStatus({
+        blocked_by_you: Boolean(updatedStatus?.blocked_by_you),
+        blocked_by_other: Boolean(updatedStatus?.blocked_by_other),
+        other_username: updatedStatus?.other_username || dmPeerUsername || '',
+      });
+      return true;
+    } catch (err) {
+      window.alert(err?.message || 'Failed to unblock user');
       return false;
     }
   };
@@ -479,9 +503,9 @@ export default function ChatWindow({
 
         {/* Reply + Input */}
         <div className="p-4 border-t flex flex-col gap-2">
-          {blockedByOtherInDm ? (
+          {dmMessagingDisabled ? (
             <div className="text-center text-sm font-medium text-red-600 bg-red-50 border border-red-100 rounded-lg py-3">
-              You have been blocked
+              {blockedByOtherInDm ? 'You have been blocked' : 'You blocked this user'}
             </div>
           ) : (
             <>
@@ -541,6 +565,7 @@ export default function ChatWindow({
           onClose={() => setShowRightPanel(false)}
           onAddMember={onAddMember}
           onBlockDmUser={handleBlockDm}
+          onUnblockDmUser={handleUnblockDm}
           onUpdateGroupProfile={onUpdateGroupProfile}
           onLeaveRoom={onLeave}
         />

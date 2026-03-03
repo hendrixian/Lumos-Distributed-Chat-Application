@@ -15,6 +15,7 @@ export default function GroupInfo({
   onMessage,
   onAddMember,
   onBlockDmUser,
+  onUnblockDmUser,
   onUpdateGroupProfile,
   onLeaveRoom,
 }) {
@@ -307,16 +308,25 @@ export default function GroupInfo({
               </div>
             )}
 
-            {isDmRoom && onBlockDmUser && (
+            {isDmRoom && dmBlockedByYou && onUnblockDmUser && (
+              <button
+                onClick={() => onUnblockDmUser(group)}
+                disabled={!dmPeerUsername}
+                className="mt-4 w-full inline-flex items-center justify-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                <LogOut size={16} />
+                {`Unblock ${dmPeerUsername || 'User'}`}
+              </button>
+            )}
+
+            {isDmRoom && !dmBlockedByYou && onBlockDmUser && (
               <button
                 onClick={() => onBlockDmUser(group)}
-                disabled={dmBlockedByYou || !dmPeerUsername}
+                disabled={!dmPeerUsername}
                 className="mt-4 w-full inline-flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:bg-red-300 disabled:cursor-not-allowed"
               >
                 <LogOut size={16} />
-                {dmBlockedByYou
-                  ? `Blocked ${dmPeerUsername || 'User'}`
-                  : `Block ${dmPeerUsername || 'User'}`}
+                {`Block ${dmPeerUsername || 'User'}`}
               </button>
             )}
 
