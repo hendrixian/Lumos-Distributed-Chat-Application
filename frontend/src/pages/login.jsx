@@ -97,17 +97,6 @@ export default function LoginForm({
           </button>
         </div>
 
-        {isLoading && (
-          <div className="mt-3 flex items-center justify-center gap-2 text-sm text-blue-700">
-            <span className="inline-flex gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-700 animate-bounce [animation-delay:-0.2s]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-700 animate-bounce [animation-delay:-0.1s]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-700 animate-bounce" />
-            </span>
-            <span>{loadingText || 'Please wait...'}</span>
-          </div>
-        )}
-
         <button
           disabled={isLoading}
           onClick={() => setIsLogin(!isLogin)}

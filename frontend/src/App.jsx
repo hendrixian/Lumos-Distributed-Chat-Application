@@ -7,6 +7,8 @@ import { API_URL, WS_URL } from './config/endpoints.js';
 
 const TZ_SUFFIX_RE = /(Z|[+-]\d{2}:\d{2})$/;
 const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const AUTH_TOKEN_STORAGE_KEY = 'lumos_auth_token';
+const AUTH_USER_STORAGE_KEY = 'lumos_auth_user';
 
 const normalizeTimestamp = (rawTimestamp) => {
   if (!rawTimestamp) return null;
@@ -46,8 +48,23 @@ const readErrorMessage = async (response, fallbackMessage) => {
 };
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
+  const [token, setToken] = useState(() => {
+    try {
+      return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || null;
+    } catch (_err) {
+      return null;
+    }
+  });
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (_err) {
+      return null;
+    }
+  });
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -76,6 +93,57 @@ export default function App() {
   useEffect(() => {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
+
+  useEffect(() => {
+    try {
+      if (token) localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+      else localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    } catch (_err) {
+      // Ignore storage errors.
+    }
+  }, [token]);
+
+  useEffect(() => {
+    try {
+      if (user) localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+      else localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    } catch (_err) {
+      // Ignore storage errors.
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!token || user) return;
+
+    let cancelled = false;
+    const restoreUser = async () => {
+      try {
+        const res = await fetch(`${API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          if (!cancelled) {
+            setToken(null);
+            setUser(null);
+          }
+          return;
+        }
+
+        const userData = await res.json();
+        if (!cancelled) setUser(userData);
+      } catch (_err) {
+        if (!cancelled) {
+          setToken(null);
+          setUser(null);
+        }
+      }
+    };
+
+    restoreUser();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user]);
 
   const closeChatSocket = (reason = 'silent_disconnect') => {
     if (!ws.current) return;
@@ -269,6 +337,18 @@ export default function App() {
       return [];
     }
   };
+
+  useEffect(() => {
+    if (!token) {
+      setRooms([]);
+      setCurrentRoom(null);
+      setMessages([]);
+      setMessagesByRoom({});
+      return;
+    }
+
+    void fetchRooms(token);
+  }, [token]);
 
   const updateUserProfile = async (payload = {}) => {
     const hasBio = Object.prototype.hasOwnProperty.call(payload, 'bio');
@@ -675,6 +755,13 @@ export default function App() {
     setConfirmPassword('');
     setShowRequestsPage(false);
     setNotificationBadgeCount(0);
+
+    try {
+      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    } catch (_err) {
+      // Ignore storage errors.
+    }
   };
 
   if (!user) {
