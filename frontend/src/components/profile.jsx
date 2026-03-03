@@ -1,5 +1,6 @@
 import { Bell, Edit2, LogOut, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import soloDefaultAvatar from '../styles/images/solo.png';
 
 export default function UserProfile({
   user,
@@ -79,7 +80,7 @@ export default function UserProfile({
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="flex flex-col items-center mb-6">
             <img
-              src={avatarPreview || 'https://via.placeholder.com/96'}
+              src={avatarPreview || soloDefaultAvatar}
               alt={user.username}
               className="w-24 h-24 rounded-full object-cover mb-2 bg-gray-300"
             />

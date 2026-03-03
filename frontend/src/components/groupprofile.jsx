@@ -1,5 +1,7 @@
 import { X, UserPlus, LogOut, Edit2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import groupDefaultAvatar from '../styles/images/group.png';
+import soloDefaultAvatar from '../styles/images/solo.png';
 
 export default function GroupInfo({
   group,
@@ -122,7 +124,11 @@ export default function GroupInfo({
       {selectedMember ? (
         // --- Member Profile Panel ---
         <div className="flex flex-col items-center p-6">
-          <div className="w-24 h-24 rounded-full bg-gray-300 mb-3" />
+          <img
+            src={selectedMember.avatar || soloDefaultAvatar}
+            alt={selectedMember.username}
+            className="w-24 h-24 rounded-full object-cover bg-gray-300 mb-3"
+          />
           <p className="text-lg font-semibold">{selectedMember.username}</p>
           {selectedMember.isAdmin && (
             <span className="mt-1 inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-xs font-semibold">
@@ -146,7 +152,7 @@ export default function GroupInfo({
           {/* Group Profile */}
           <div className="flex flex-col items-center p-6 border-b">
             <img
-              src={groupAvatarPreview || 'https://via.placeholder.com/96'}
+              src={groupAvatarPreview || groupDefaultAvatar}
               alt={name}
               className="w-24 h-24 rounded-full object-cover bg-gray-300 mb-3"
             />
@@ -299,7 +305,7 @@ export default function GroupInfo({
                 >
                   <div className="relative">
                     <img
-                      src={member.avatar || 'https://via.placeholder.com/40'}
+                      src={member.avatar || soloDefaultAvatar}
                       alt={member.username}
                       className="w-10 h-10 rounded-full object-cover"
                     />

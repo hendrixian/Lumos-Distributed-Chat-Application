@@ -2,6 +2,8 @@ import { Plus, Trash2, UserPlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import UserProfile from './profile.jsx';
 import { API_URL } from '../config/endpoints.js';
+import groupDefaultAvatar from '../styles/images/group.png';
+import soloDefaultAvatar from '../styles/images/solo.png';
 
 export default function Sidebar({
   user,
@@ -230,6 +232,10 @@ export default function Sidebar({
             const isGroupRoom = room.type !== 'dm';
             const visibility = room.visibility === 'private' ? 'private' : 'public';
             const canOpenRoom = room.type === 'dm' || isMember;
+            const roomAvatar =
+              room.avatar_url ||
+              room.avatar ||
+              (isGroupRoom ? groupDefaultAvatar : soloDefaultAvatar);
 
             return (
               <div
@@ -242,7 +248,7 @@ export default function Sidebar({
                 <div className="flex justify-between gap-2 items-start">
                   <div className="flex items-center gap-3 min-w-0">
                     <img
-                      src={room.avatar_url || room.avatar || 'https://via.placeholder.com/40'}
+                      src={roomAvatar}
                       alt={room.name}
                       className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                     />
