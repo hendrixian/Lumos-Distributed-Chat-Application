@@ -75,6 +75,21 @@ class RoomRepository:
         result = await self.collection.delete_one({"id": room_id})
         return result.deleted_count > 0
 
+    async def get_room_by_name(self, name: str) -> Optional[Dict]:
+        """Find room by name (case-insensitive)"""
+        return await self.collection.find_one({
+            "name": {"$regex": f"^{name}$", "$options": "i"}
+        })
 
+    async def get_all_rooms(self, skip: int = 0, limit: int = 100) -> List[Dict]:
+        """Get all rooms with pagination"""
+        cursor = self.collection.find({}).sort("created_at", -1).skip(skip).limit(limit)
+        rooms = await cursor.to_list(length=limit)
+        return rooms
+
+    async def count_rooms(self) -> int:
+        """Count total number of rooms"""
+        return await self.collection.count_documents({})
+        
 # Global repository instance
 room_repository = RoomRepository()
